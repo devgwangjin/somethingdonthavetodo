@@ -197,14 +197,14 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         sortedTransactions.forEach(row => {
-            const safeName = \`"\${row.name.replace(/"/g, '""')}"\`;
-            csvContent += \`\${row.date},\${safeName},\${row.qty},\${row.price},\${row.total}\n\`;
+            const safeName = `"${row.name.replace(/"/g, '""')}"`;
+            csvContent += `${row.date},${safeName},${row.qty},${row.price},${row.total}\n`;
         });
 
         const encodedUri = encodeURI(csvContent);
         const link = document.createElement("a");
         link.setAttribute("href", encodedUri);
-        link.setAttribute("download", \`자재구매내역_\${new Date().toISOString().split('T')[0]}.csv\`);
+        link.setAttribute("download", `자재구매내역_${new Date().toISOString().split('T')[0]}.csv`);
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
