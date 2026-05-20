@@ -9,6 +9,18 @@ document.addEventListener('DOMContentLoaded', () => {
     const exportCsvBtn = document.getElementById('exportCsvBtn');
     const transactionDateInput = document.getElementById('transactionDate');
 
+    // 날짜 하이픈 자동 변환 (숫자만 쳐도 자동으로 2026-04-17 형태로)
+    transactionDateInput.addEventListener('input', (e) => {
+        let val = e.target.value.replace(/[^0-9]/g, '');
+        if (val.length > 8) val = val.substring(0, 8);
+        if (val.length >= 6) {
+            val = val.substring(0,4) + '-' + val.substring(4,6) + '-' + val.substring(6);
+        } else if (val.length >= 4) {
+            val = val.substring(0,4) + '-' + val.substring(4);
+        }
+        e.target.value = val;
+    });
+
     // 기본 오늘 날짜 세팅
     const today = new Date().toISOString().split('T')[0];
     transactionDateInput.value = today;
@@ -139,18 +151,24 @@ document.addEventListener('DOMContentLoaded', () => {
     const renderTable = () => {
         dataTableBody.innerHTML = '';
         
-        // 정렬 로직 (날짜순)
+        // 정렬 로직 (날짜순, 같은 날짜면 입력된 순서대로 안정 정렬)
         let sortedTransactions = [...transactions];
         sortedTransactions.sort((a, b) => {
             const dateA = new Date(a.date);
             const dateB = new Date(b.date);
+            if (dateA.getTime() === dateB.getTime()) {
+                return a.id.localeCompare(b.id);
+            }
             return isSortAscending ? dateA - dateB : dateB - dateA;
         });
 
+        let lastDate = null;
         sortedTransactions.forEach(item => {
+            const displayDate = item.date === lastDate ? '' : item.date;
+            
             const tr = document.createElement('tr');
             tr.innerHTML = `
-                <td>${item.date}</td>
+                <td>${displayDate}</td>
                 <td>${item.name}</td>
                 <td>${item.qty.toLocaleString()}</td>
                 <td>${formatCurrency(item.price)}</td>
@@ -158,6 +176,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td><button class="delete-row-btn" data-id="${item.id}">삭제</button></td>
             `;
             dataTableBody.appendChild(tr);
+            lastDate = item.date;
         });
 
         // 삭제 이벤트 위임
