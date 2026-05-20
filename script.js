@@ -291,7 +291,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         for (let i = startPage; i <= endPage; i++) {
             const btn = document.createElement('button');
-            btn.className = \`page-btn \${i === currentPage ? 'active' : ''}\`;
+            btn.className = `page-btn ${i === currentPage ? 'active' : ''}`;
             btn.textContent = i;
             btn.onclick = () => { currentPage = i; renderTable(); };
             paginationContainer.appendChild(btn);
