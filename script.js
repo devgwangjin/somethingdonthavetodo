@@ -27,6 +27,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let transactions = JSON.parse(localStorage.getItem('inventoryData')) || [];
     let isSortAscending = true; // 기본 정렬 상태 (오름차순/과거순)
+    
+    // 페이지네이션 상태
+    let currentPage = 1;
+    const rowsPerPage = 20; // 한 페이지당 보여줄 항목 수
+    const paginationContainer = document.getElementById('paginationContainer');
 
     // 통화 포맷 함수
     const formatCurrency = (num) => {
@@ -162,8 +167,16 @@ document.addEventListener('DOMContentLoaded', () => {
             return isSortAscending ? dateA - dateB : dateB - dateA;
         });
 
+        // 페이지네이션 계산
+        const totalPages = Math.ceil(sortedTransactions.length / rowsPerPage) || 1;
+        if (currentPage > totalPages) currentPage = totalPages;
+
+        const startIndex = (currentPage - 1) * rowsPerPage;
+        const endIndex = startIndex + rowsPerPage;
+        const paginatedData = sortedTransactions.slice(startIndex, endIndex);
+
         let lastDate = null;
-        sortedTransactions.forEach(item => {
+        paginatedData.forEach(item => {
             const displayDate = item.date === lastDate ? '' : item.date;
             
             const tr = document.createElement('tr');
@@ -249,6 +262,49 @@ document.addEventListener('DOMContentLoaded', () => {
                 renderTable(); // 수정 취소 시 원래 테이블 렌더링
             }
         };
+        
+        renderPagination(totalPages);
+    };
+
+    // 페이지네이션 렌더링 함수
+    const renderPagination = (totalPages) => {
+        if (!paginationContainer) return;
+        paginationContainer.innerHTML = '';
+        
+        if (totalPages <= 1) return;
+
+        // 이전 버튼
+        if (currentPage > 1) {
+            const prevBtn = document.createElement('button');
+            prevBtn.className = 'page-btn';
+            prevBtn.textContent = '이전';
+            prevBtn.onclick = () => { currentPage--; renderTable(); };
+            paginationContainer.appendChild(prevBtn);
+        }
+
+        // 페이지 번호
+        let startPage = Math.max(1, currentPage - 2);
+        let endPage = Math.min(totalPages, startPage + 4);
+        if (endPage - startPage < 4) {
+            startPage = Math.max(1, endPage - 4);
+        }
+
+        for (let i = startPage; i <= endPage; i++) {
+            const btn = document.createElement('button');
+            btn.className = \`page-btn \${i === currentPage ? 'active' : ''}\`;
+            btn.textContent = i;
+            btn.onclick = () => { currentPage = i; renderTable(); };
+            paginationContainer.appendChild(btn);
+        }
+
+        // 다음 버튼
+        if (currentPage < totalPages) {
+            const nextBtn = document.createElement('button');
+            nextBtn.className = 'page-btn';
+            nextBtn.textContent = '다음';
+            nextBtn.onclick = () => { currentPage++; renderTable(); };
+            paginationContainer.appendChild(nextBtn);
+        }
     };
 
     // 날짜 정렬 버튼 클릭
