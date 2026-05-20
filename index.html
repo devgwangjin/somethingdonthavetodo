@@ -50,7 +50,11 @@
             <section class="card list-section">
                 <div class="list-header-row">
                     <h2>거래 내역 조회</h2>
-                    <button type="button" id="exportCsvBtn" class="btn-outline">📥 CSV 백업</button>
+                    <div class="header-actions">
+                        <input type="file" id="importCsvInput" accept=".csv" style="display: none;">
+                        <button type="button" id="importCsvBtn" class="btn-outline">📤 CSV 복원</button>
+                        <button type="button" id="exportCsvBtn" class="btn-outline">📥 CSV 백업</button>
+                    </div>
                 </div>
                 
                 <div class="table-container">

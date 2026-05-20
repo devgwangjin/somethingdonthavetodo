@@ -200,6 +200,11 @@ button {
     margin-bottom: 1.5rem;
 }
 
+.header-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
 .list-header-row h2 {
     margin-bottom: 0;
     border-bottom: none;

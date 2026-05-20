@@ -288,6 +288,89 @@ document.addEventListener('DOMContentLoaded', () => {
         document.body.removeChild(link);
     });
 
+    // CSV 복원(불러오기) 기능
+    const importCsvInput = document.getElementById('importCsvInput');
+    const importCsvBtn = document.getElementById('importCsvBtn');
+
+    if (importCsvBtn && importCsvInput) {
+        importCsvBtn.addEventListener('click', () => {
+            importCsvInput.click();
+        });
+
+        importCsvInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const csv = event.target.result;
+                const lines = csv.split('\n').map(line => line.trim()).filter(line => line);
+                
+                if (lines.length < 2) {
+                    alert('올바른 파일이 아니거나 복원할 데이터가 없습니다.');
+                    return;
+                }
+
+                const newEntries = [];
+                // 첫 줄(헤더) 제외하고 파싱
+                for (let i = 1; i < lines.length; i++) {
+                    const row = lines[i];
+                    const cols = [];
+                    let inQuotes = false;
+                    let current = '';
+                    for (let c = 0; c < row.length; c++) {
+                        const char = row[c];
+                        if (char === '"') {
+                            inQuotes = !inQuotes;
+                        } else if (char === ',' && !inQuotes) {
+                            cols.push(current);
+                            current = '';
+                        } else {
+                            current += char;
+                        }
+                    }
+                    cols.push(current);
+
+                    if (cols.length >= 5) {
+                        const date = cols[0];
+                        const name = cols[1].replace(/^"|"$/g, '').replace(/""/g, '"');
+                        const qty = parseFloat(cols[2]);
+                        const price = parseFloat(cols[3]);
+                        
+                        if (date && name && !isNaN(qty) && !isNaN(price)) {
+                            newEntries.push({
+                                id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
+                                date: date,
+                                name: name,
+                                qty: qty,
+                                price: price,
+                                total: qty * price
+                            });
+                        }
+                    }
+                }
+
+                if (newEntries.length === 0) {
+                    alert('복원할 수 있는 유효한 데이터가 없습니다.');
+                    return;
+                }
+
+                const isOverwrite = confirm('기존 데이터를 모두 지우고 이 백업 파일의 내용으로 덮어쓰시겠습니까?\\n(취소를 누르시면 기존 데이터 아래에 추가로 병합됩니다.)');
+                if (isOverwrite) {
+                    transactions = newEntries;
+                } else {
+                    transactions = [...transactions, ...newEntries];
+                }
+                
+                saveToLocalStorage();
+                renderTable();
+                alert('데이터 복원이 완료되었습니다! 🎉');
+                importCsvInput.value = ''; // 파일 선택 초기화
+            };
+            reader.readAsText(file, 'utf-8');
+        });
+    }
+
     // 초기 테이블 렌더링
     renderTable();
 });
