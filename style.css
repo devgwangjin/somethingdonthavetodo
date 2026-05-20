@@ -121,6 +121,11 @@ input:focus {
     animation: fadeIn 0.3s ease-out;
 }
 
+.item-row input {
+    width: 100%;
+    min-width: 0; /* 그리드 크기에 맞춰 입력창이 줄어들 수 있도록 설정 */
+}
+
 @keyframes fadeIn {
     from { opacity: 0; transform: translateY(-10px); }
     to { opacity: 1; transform: translateY(0); }
