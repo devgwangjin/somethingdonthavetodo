@@ -117,6 +117,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const name = row.querySelector('.item-name').value.trim();
             const qty = parseFloat(row.querySelector('.item-qty').value);
             const price = parseFloat(row.querySelector('.item-price').value);
+            const remarks = row.querySelector('.item-remarks').value.trim();
 
             // 값이 입력되어 있는 행만 저장 (비어있는 행 무시)
             if (name || !isNaN(qty) || !isNaN(price)) {
@@ -129,6 +130,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         name: name,
                         qty: qty,
                         price: price,
+                        remarks: remarks,
                         total: qty * price
                     });
                 }
@@ -202,6 +204,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td>${item.name}</td>
                 <td>${item.qty.toLocaleString()}</td>
                 <td>${formatCurrency(item.price)}</td>
+                <td>${item.remarks || ''}</td>
                 <td>${formatCurrency(item.total)}</td>
                 <td style="white-space: nowrap;">
                     <button class="edit-row-btn" data-id="${item.id}">수정</button>
@@ -233,6 +236,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <td><input type="text" class="edit-name" value="${item.name.replace(/"/g, '&quot;')}"></td>
                     <td><input type="number" class="edit-qty" value="${item.qty}" min="1"></td>
                     <td><input type="number" class="edit-price" value="${item.price}" min="0"></td>
+                    <td><input type="text" class="edit-remarks" value="${(item.remarks || '').replace(/"/g, '&quot;')}"></td>
                     <td>${formatCurrency(item.total)}</td>
                     <td style="white-space: nowrap;">
                         <button class="save-edit-btn" data-id="${item.id}">저장</button>
@@ -259,6 +263,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const newName = tr.querySelector('.edit-name').value.trim();
                 const newQty = parseFloat(tr.querySelector('.edit-qty').value);
                 const newPrice = parseFloat(tr.querySelector('.edit-price').value);
+                const newRemarks = tr.querySelector('.edit-remarks').value.trim();
 
                 if (!newDate || !newName || isNaN(newQty) || isNaN(newPrice)) {
                     alert('모든 값을 올바르게 입력해주세요.');
@@ -271,6 +276,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     transactions[itemIndex].name = newName;
                     transactions[itemIndex].qty = newQty;
                     transactions[itemIndex].price = newPrice;
+                    transactions[itemIndex].remarks = newRemarks;
                     transactions[itemIndex].total = newQty * newPrice;
                     saveToLocalStorage();
                     renderTable();
@@ -340,7 +346,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         let csvContent = "data:text/csv;charset=utf-8,\uFEFF"; // 한글 깨짐 방지 BOM 추가
-        csvContent += "거래일자,품목,수량,개당단가,총액\n";
+        csvContent += "거래일자,품목,수량,개당단가,비고,총액\n";
 
         // 정렬된 순서대로 내보내기 위해 정렬 로직 동일하게 적용
         let sortedTransactions = [...transactions].sort((a, b) => {
@@ -349,7 +355,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         sortedTransactions.forEach(row => {
             const safeName = `"${row.name.replace(/"/g, '""')}"`;
-            csvContent += `${row.date},${safeName},${row.qty},${row.price},${row.total}\n`;
+            const safeRemarks = `"${(row.remarks || '').replace(/"/g, '""')}"`;
+            csvContent += `${row.date},${safeName},${row.qty},${row.price},${safeRemarks},${row.total}\n`;
         });
 
         const encodedUri = encodeURI(csvContent);
@@ -409,6 +416,12 @@ document.addEventListener('DOMContentLoaded', () => {
                         const name = cols[1].replace(/^"|"$/g, '').replace(/""/g, '"');
                         const qty = parseFloat(cols[2]);
                         const price = parseFloat(cols[3]);
+                        let remarks = '';
+                        
+                        // 예전 백업 포맷(5개 컬럼)과 새로운 포맷(6개 컬럼) 호환 처리
+                        if (cols.length >= 6) {
+                            remarks = cols[4].replace(/^"|"$/g, '').replace(/""/g, '"');
+                        }
                         
                         if (date && name && !isNaN(qty) && !isNaN(price)) {
                             newEntries.push({
@@ -417,6 +430,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 name: name,
                                 qty: qty,
                                 price: price,
+                                remarks: remarks,
                                 total: qty * price
                             });
                         }

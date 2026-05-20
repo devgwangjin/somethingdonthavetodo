@@ -101,7 +101,7 @@ input:focus {
 
 .items-header {
     display: grid;
-    grid-template-columns: 2fr 1fr 1fr 1fr 40px;
+    grid-template-columns: 2fr 1fr 1fr 1.5fr 1fr 40px;
     gap: 1rem;
     padding-bottom: 0.5rem;
     border-bottom: 1px solid var(--border-color);
@@ -114,7 +114,7 @@ input:focus {
 
 .item-row {
     display: grid;
-    grid-template-columns: 2fr 1fr 1fr 1fr 40px;
+    grid-template-columns: 2fr 1fr 1fr 1.5fr 1fr 40px;
     gap: 1rem;
     margin-bottom: 0.5rem;
     align-items: center;
