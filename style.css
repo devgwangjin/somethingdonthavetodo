@@ -269,8 +269,35 @@ tbody td {
     color: var(--danger-color);
     padding: 0.3rem 0.6rem;
     border: 1px solid var(--border-color);
+    border-radius: 4px;
 }
 .delete-row-btn:hover {
     background-color: rgba(248, 81, 73, 0.1);
     border-color: var(--danger-color);
+}
+
+.edit-row-btn, .save-edit-btn, .cancel-edit-btn {
+    background-color: transparent;
+    padding: 0.3rem 0.6rem;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    margin-right: 4px;
+}
+.edit-row-btn { color: var(--primary-color); }
+.edit-row-btn:hover { background-color: rgba(88, 166, 255, 0.1); border-color: var(--primary-color); }
+
+.save-edit-btn { color: #3fb950; border-color: var(--border-color); }
+.save-edit-btn:hover { background-color: rgba(63, 185, 80, 0.1); border-color: #3fb950; }
+
+.cancel-edit-btn { color: var(--text-muted); }
+.cancel-edit-btn:hover { background-color: rgba(139, 148, 158, 0.1); }
+
+td input[type="text"], td input[type="number"] {
+    width: 100%;
+    min-width: 80px;
+    padding: 0.3rem 0.5rem;
+    font-size: 0.9rem;
+}
+td input.edit-name {
+    min-width: 150px;
 }

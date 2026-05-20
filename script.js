@@ -173,23 +173,82 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td>${item.qty.toLocaleString()}</td>
                 <td>${formatCurrency(item.price)}</td>
                 <td>${formatCurrency(item.total)}</td>
-                <td><button class="delete-row-btn" data-id="${item.id}">삭제</button></td>
+                <td style="white-space: nowrap;">
+                    <button class="edit-row-btn" data-id="${item.id}">수정</button>
+                    <button class="delete-row-btn" data-id="${item.id}">삭제</button>
+                </td>
             `;
             dataTableBody.appendChild(tr);
             lastDate = item.date;
         });
 
-        // 삭제 이벤트 위임
-        dataTableBody.querySelectorAll('.delete-row-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
+        // 수정/삭제 이벤트 위임
+        dataTableBody.onclick = (e) => {
+            const target = e.target;
+            if (target.classList.contains('delete-row-btn')) {
                 if(confirm('정말 이 항목을 삭제하시겠습니까?')) {
-                    const id = e.target.getAttribute('data-id');
+                    const id = target.getAttribute('data-id');
                     transactions = transactions.filter(t => t.id !== id);
                     saveToLocalStorage();
                     renderTable();
                 }
-            });
-        });
+            } else if (target.classList.contains('edit-row-btn')) {
+                const id = target.getAttribute('data-id');
+                const item = transactions.find(t => t.id === id);
+                if (!item) return;
+
+                const tr = target.closest('tr');
+                tr.innerHTML = `
+                    <td><input type="text" class="edit-date" value="${item.date}" maxlength="10"></td>
+                    <td><input type="text" class="edit-name" value="${item.name.replace(/"/g, '&quot;')}"></td>
+                    <td><input type="number" class="edit-qty" value="${item.qty}" min="1"></td>
+                    <td><input type="number" class="edit-price" value="${item.price}" min="0"></td>
+                    <td>${formatCurrency(item.total)}</td>
+                    <td style="white-space: nowrap;">
+                        <button class="save-edit-btn" data-id="${item.id}">저장</button>
+                        <button class="cancel-edit-btn">취소</button>
+                    </td>
+                `;
+
+                // 날짜 하이픈 자동 변환 (수정 폼 내)
+                const editDateInput = tr.querySelector('.edit-date');
+                editDateInput.addEventListener('input', (ev) => {
+                    let val = ev.target.value.replace(/[^0-9]/g, '');
+                    if (val.length > 8) val = val.substring(0, 8);
+                    if (val.length >= 6) {
+                        val = val.substring(0,4) + '-' + val.substring(4,6) + '-' + val.substring(6);
+                    } else if (val.length >= 4) {
+                        val = val.substring(0,4) + '-' + val.substring(4);
+                    }
+                    ev.target.value = val;
+                });
+            } else if (target.classList.contains('save-edit-btn')) {
+                const id = target.getAttribute('data-id');
+                const tr = target.closest('tr');
+                const newDate = tr.querySelector('.edit-date').value;
+                const newName = tr.querySelector('.edit-name').value.trim();
+                const newQty = parseFloat(tr.querySelector('.edit-qty').value);
+                const newPrice = parseFloat(tr.querySelector('.edit-price').value);
+
+                if (!newDate || !newName || isNaN(newQty) || isNaN(newPrice)) {
+                    alert('모든 값을 올바르게 입력해주세요.');
+                    return;
+                }
+
+                const itemIndex = transactions.findIndex(t => t.id === id);
+                if (itemIndex > -1) {
+                    transactions[itemIndex].date = newDate;
+                    transactions[itemIndex].name = newName;
+                    transactions[itemIndex].qty = newQty;
+                    transactions[itemIndex].price = newPrice;
+                    transactions[itemIndex].total = newQty * newPrice;
+                    saveToLocalStorage();
+                    renderTable();
+                }
+            } else if (target.classList.contains('cancel-edit-btn')) {
+                renderTable(); // 수정 취소 시 원래 테이블 렌더링
+            }
+        };
     };
 
     // 날짜 정렬 버튼 클릭
