@@ -8,6 +8,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const sortDateBtn = document.getElementById('sortDateBtn');
     const exportCsvBtn = document.getElementById('exportCsvBtn');
     const transactionDateInput = document.getElementById('transactionDate');
+    const searchInput = document.getElementById('searchInput');
+
+    // 검색 이벤트 리스너
+    let searchQuery = '';
+    if (searchInput) {
+        searchInput.addEventListener('input', (e) => {
+            searchQuery = e.target.value.trim().toLowerCase();
+            currentPage = 1; // 검색 시 첫 페이지로 이동
+            renderTable();
+        });
+    }
 
     // 날짜 하이픈 자동 변환 (숫자만 쳐도 자동으로 2026-04-17 형태로)
     transactionDateInput.addEventListener('input', (e) => {
@@ -156,8 +167,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const renderTable = () => {
         dataTableBody.innerHTML = '';
         
-        // 정렬 로직 (날짜순, 같은 날짜면 입력된 순서대로 안정 정렬)
-        let sortedTransactions = [...transactions];
+        // 1. 검색 필터링
+        let filteredTransactions = transactions.filter(item => {
+            if (!searchQuery) return true;
+            return item.name.toLowerCase().includes(searchQuery) || item.date.includes(searchQuery);
+        });
+        
+        // 2. 정렬 로직 (날짜순, 같은 날짜면 입력된 순서대로 안정 정렬)
+        let sortedTransactions = [...filteredTransactions];
         sortedTransactions.sort((a, b) => {
             const dateA = new Date(a.date);
             const dateB = new Date(b.date);
