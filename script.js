@@ -368,9 +368,37 @@ document.addEventListener('DOMContentLoaded', () => {
         document.body.removeChild(link);
     });
 
-    // CSV 복원(불러오기) 기능
+    // CSV 복원(불러오기) 및 되돌리기 기능
     const importCsvInput = document.getElementById('importCsvInput');
     const importCsvBtn = document.getElementById('importCsvBtn');
+    const undoImportBtn = document.getElementById('undoImportBtn');
+
+    const checkBackupExists = () => {
+        if (undoImportBtn) {
+            if (localStorage.getItem('inventoryData_backup')) {
+                undoImportBtn.style.display = 'inline-block';
+            } else {
+                undoImportBtn.style.display = 'none';
+            }
+        }
+    };
+    checkBackupExists();
+
+    if (undoImportBtn) {
+        undoImportBtn.addEventListener('click', () => {
+            const backup = localStorage.getItem('inventoryData_backup');
+            if (!backup) return;
+
+            if (confirm('직전에 복원(병합/덮어쓰기)하기 이전 상태로 데이터를 완전히 되돌리시겠습니까?')) {
+                transactions = JSON.parse(backup);
+                saveToLocalStorage();
+                renderTable();
+                localStorage.removeItem('inventoryData_backup'); // 되돌린 후 백업본 삭제
+                checkBackupExists();
+                alert('이전 상태로 복구되었습니다.');
+            }
+        });
+    }
 
     if (importCsvBtn && importCsvInput) {
         importCsvBtn.addEventListener('click', () => {
@@ -441,6 +469,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     alert('복원할 수 있는 유효한 데이터가 없습니다.');
                     return;
                 }
+
+                // 가져오기 성공이 확정된 시점에 직전 상태 백업
+                localStorage.setItem('inventoryData_backup', JSON.stringify(transactions));
+                checkBackupExists();
 
                 const isOverwrite = confirm('기존 데이터를 모두 지우고 이 백업 파일의 내용으로 덮어쓰시겠습니까?\\n(취소를 누르시면 기존 데이터 아래에 추가로 병합됩니다.)');
                 if (isOverwrite) {
