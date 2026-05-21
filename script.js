@@ -331,6 +331,35 @@ document.addEventListener('DOMContentLoaded', () => {
             nextBtn.onclick = () => { currentPage++; renderTable(); };
             paginationContainer.appendChild(nextBtn);
         }
+
+        // 페이지 정보 및 직접 이동
+        const pageInfoDiv = document.createElement('div');
+        pageInfoDiv.className = 'page-info-container';
+        pageInfoDiv.innerHTML = `
+            <span class="page-text">${currentPage} / ${totalPages} 페이지</span>
+            <input type="number" class="page-jump-input" min="1" max="${totalPages}" value="${currentPage}">
+            <button class="page-jump-btn page-btn">이동</button>
+        `;
+
+        const jumpInput = pageInfoDiv.querySelector('.page-jump-input');
+        const jumpBtn = pageInfoDiv.querySelector('.page-jump-btn');
+
+        const jumpToPage = () => {
+            let p = parseInt(jumpInput.value);
+            if (!isNaN(p)) {
+                if (p < 1) p = 1;
+                if (p > totalPages) p = totalPages;
+                currentPage = p;
+                renderTable();
+            }
+        };
+
+        jumpBtn.addEventListener('click', jumpToPage);
+        jumpInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') jumpToPage();
+        });
+
+        paginationContainer.appendChild(pageInfoDiv);
     };
 
     // 날짜 정렬 버튼 클릭
