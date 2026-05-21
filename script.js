@@ -172,7 +172,10 @@ document.addEventListener('DOMContentLoaded', () => {
         // 1. 검색 필터링
         let filteredTransactions = transactions.filter(item => {
             if (!searchQuery) return true;
-            return item.name.toLowerCase().includes(searchQuery) || item.date.includes(searchQuery);
+            const searchLower = searchQuery.toLowerCase();
+            return item.name.toLowerCase().includes(searchLower) || 
+                   item.date.includes(searchLower) || 
+                   (item.remarks && item.remarks.toLowerCase().includes(searchLower));
         });
         
         // 2. 정렬 로직 (날짜순, 같은 날짜면 입력된 순서대로 안정 정렬)
