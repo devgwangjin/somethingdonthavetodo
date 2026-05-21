@@ -506,16 +506,51 @@ document.addEventListener('DOMContentLoaded', () => {
                 localStorage.setItem('inventoryData_backup', JSON.stringify(transactions));
                 checkBackupExists();
 
-                const isOverwrite = confirm('기존 데이터를 모두 지우고 이 백업 파일의 내용으로 덮어쓰시겠습니까?\\n(취소를 누르시면 기존 데이터 아래에 추가로 병합됩니다.)');
-                if (isOverwrite) {
+                const mergeMode = prompt('💡 스마트 병합 옵션을 선택해주세요.\\n\\n1: 📝 비고란 복구 (현재 단가/수량 유지 + 백업파일에서 비고란만 가져오기)\\n2: 🔄 최신 업데이트 (백업파일 단가/수량으로 변경 + 기존 비고란 유지)\\n3: ➕ 단순 이어붙이기 (중복 허용)\\n4: ⚠️ 완전 덮어쓰기 (기존 데이터 모두 삭제)\\n\\n원하시는 작업의 번호(1~4)를 입력하세요.', '1');
+
+                if (mergeMode === '1') {
+                    // 1: 빈칸 채우기 (현재 데이터 유지 + 파일에서 비고란 가져오기)
+                    newEntries.forEach(newObj => {
+                        const existing = transactions.find(t => t.date === newObj.date && t.name === newObj.name);
+                        if (existing) {
+                            if (!existing.remarks && newObj.remarks) existing.remarks = newObj.remarks;
+                        } else {
+                            transactions.push(newObj);
+                        }
+                    });
+                } else if (mergeMode === '2') {
+                    // 2: 최신화 (파일의 가격/수량으로 덮어쓰되, 파일에 비고 없으면 기존 비고 유지)
+                    newEntries.forEach(newObj => {
+                        const existing = transactions.find(t => t.date === newObj.date && t.name === newObj.name);
+                        if (existing) {
+                            existing.qty = newObj.qty;
+                            existing.price = newObj.price;
+                            existing.total = newObj.total;
+                            if (newObj.remarks) {
+                                existing.remarks = newObj.remarks;
+                            }
+                        } else {
+                            transactions.push(newObj);
+                        }
+                    });
+                } else if (mergeMode === '3') {
+                    // 3: 단순 이어붙이기
+                    transactions = [...transactions, ...newEntries];
+                } else if (mergeMode === '4') {
+                    // 4: 완전 덮어쓰기
                     transactions = newEntries;
                 } else {
-                    transactions = [...transactions, ...newEntries];
+                    // 취소 시 백업 롤백 및 종료
+                    localStorage.removeItem('inventoryData_backup');
+                    checkBackupExists();
+                    alert('복원 작업이 취소되었습니다.');
+                    importCsvInput.value = '';
+                    return;
                 }
-                
+
                 saveToLocalStorage();
                 renderTable();
-                alert('데이터 복원이 완료되었습니다! 🎉');
+                alert('요청하신 방식으로 데이터 병합이 완료되었습니다! 🎉');
                 importCsvInput.value = ''; // 파일 선택 초기화
             };
             reader.readAsText(file, 'utf-8');
