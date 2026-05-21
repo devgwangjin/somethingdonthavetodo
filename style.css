@@ -381,7 +381,7 @@ td input.edit-name {
 }
 
 .page-jump-input {
-    width: 55px;
+    width: 80px;
     padding: 0.3rem;
     background-color: var(--input-bg);
     border: 1px solid var(--border-color);
@@ -389,6 +389,15 @@ td input.edit-name {
     border-radius: 4px;
     text-align: center;
     font-size: 0.9rem;
+}
+
+.page-jump-input::-webkit-outer-spin-button,
+.page-jump-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+.page-jump-input[type=number] {
+    -moz-appearance: textfield;
 }
 
 .page-jump-input:focus {
