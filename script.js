@@ -177,7 +177,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const keywords = searchQuery.toLowerCase().split(/[\s,]+/).filter(k => k.trim() !== '');
             
             // 해당 행의 모든 데이터를 하나의 문자열로 합침 (단가, 수량, 총액도 검색 가능하도록)
-            const searchableText = \`\${item.date} \${item.name} \${item.remarks || ''} \${item.price} \${item.qty} \${item.total}\`.toLowerCase();
+            const searchableText = (item.date + ' ' + item.name + ' ' + (item.remarks || '') + ' ' + item.price + ' ' + item.qty + ' ' + item.total).toLowerCase();
 
             // 입력한 '모든' 키워드가 이 합쳐진 문자열 안에 존재하는지 확인 (AND 검색)
             return keywords.every(keyword => searchableText.includes(keyword));
