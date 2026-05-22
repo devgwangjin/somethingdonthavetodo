@@ -10,55 +10,78 @@ document.addEventListener('DOMContentLoaded', () => {
     const transactionDateInput = document.getElementById('transactionDate');
     const searchInput = document.getElementById('searchInput');
 
-    // 검색 이벤트 리스너
-    let searchQuery = '';
-    if (searchInput) {
-        searchInput.addEventListener('input', (e) => {
-            searchQuery = e.target.value.trim().toLowerCase();
-            currentPage = 1; // 검색 시 첫 페이지로 이동
-            renderTable();
+    // ─── 상수 정의 (매직 넘버 제거) ───
+    const MAX_DATE_DIGITS = 8;        // YYYYMMDD 숫자 길이
+    const PAGE_BUTTON_COUNT = 5;      // 페이지네이션에 표시할 버튼 수
+    const ROWS_PER_PAGE = 20;         // 한 페이지당 보여줄 항목 수
+
+    // ─── 유틸리티 함수 ───
+
+    // 날짜 입력 자동 포맷 (YYYYMMDD → YYYY-MM-DD) — 중복 코드 함수로 추출
+    const applyDateAutoFormat = (inputEl) => {
+        inputEl.addEventListener('input', (e) => {
+            let val = e.target.value.replace(/[^0-9]/g, '');
+            if (val.length > MAX_DATE_DIGITS) val = val.substring(0, MAX_DATE_DIGITS);
+            if (val.length >= 6) {
+                val = val.substring(0, 4) + '-' + val.substring(4, 6) + '-' + val.substring(6);
+            } else if (val.length >= 4) {
+                val = val.substring(0, 4) + '-' + val.substring(4);
+            }
+            e.target.value = val;
         });
-    }
+    };
 
-    // 날짜 하이픈 자동 변환 (숫자만 쳐도 자동으로 2026-04-17 형태로)
-    transactionDateInput.addEventListener('input', (e) => {
-        let val = e.target.value.replace(/[^0-9]/g, '');
-        if (val.length > 8) val = val.substring(0, 8);
-        if (val.length >= 6) {
-            val = val.substring(0,4) + '-' + val.substring(4,6) + '-' + val.substring(6);
-        } else if (val.length >= 4) {
-            val = val.substring(0,4) + '-' + val.substring(4);
+    // 날짜 유효성 검증 (2026-99-99 같은 존재하지 않는 날짜 차단)
+    const isValidDate = (dateStr) => {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return false;
+        const [year, month, day] = dateStr.split('-').map(Number);
+        const d = new Date(year, month - 1, day);
+        return d.getFullYear() === year && d.getMonth() === month - 1 && d.getDate() === day;
+    };
+
+    // 고유 ID 생성 (crypto.randomUUID 우선 사용, 미지원 시 폴백)
+    const generateId = () => {
+        if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+            return crypto.randomUUID();
         }
-        e.target.value = val;
-    });
+        return Date.now().toString(36) + Math.random().toString(36).substring(2, 15);
+    };
 
-    // 기본 오늘 날짜 세팅
-    const today = new Date().toISOString().split('T')[0];
-    transactionDateInput.value = today;
-
-    let transactions = JSON.parse(localStorage.getItem('inventoryData')) || [];
-    let isSortAscending = true; // 기본 정렬 상태 (오름차순/과거순)
-    
-    // 페이지네이션 상태
-    let currentPage = 1;
-    const rowsPerPage = 20; // 한 페이지당 보여줄 항목 수
-    const paginationContainer = document.getElementById('paginationContainer');
-
-    // 통화 포맷 함수
+    // 통화 포맷
     const formatCurrency = (num) => {
         return num.toLocaleString('ko-KR');
     };
 
-    // 품목 행 추가 함수
+    // ─── 검색 이벤트 ───
+    let searchQuery = '';
+    if (searchInput) {
+        searchInput.addEventListener('input', (e) => {
+            searchQuery = e.target.value.trim().toLowerCase();
+            currentPage = 1;
+            renderTable();
+        });
+    }
+
+    // ─── 날짜 입력 초기화 ───
+    applyDateAutoFormat(transactionDateInput);
+    const today = new Date().toISOString().split('T')[0];
+    transactionDateInput.value = today;
+
+    // ─── 상태 관리 ───
+    let transactions = JSON.parse(localStorage.getItem('inventoryData')) || [];
+    let isSortAscending = true;
+    let currentPage = 1;
+    const paginationContainer = document.getElementById('paginationContainer');
+
+    // ─── 품목 행 관리 ───
     const addItemRow = () => {
         const clone = itemRowTemplate.content.cloneNode(true);
         const row = clone.querySelector('.item-row');
-        
+
         const qtyInput = row.querySelector('.item-qty');
         const priceInput = row.querySelector('.item-price');
         const deleteBtn = row.querySelector('.btn-delete');
-        
-        // 입력 변경 시 자동 계산
+
         const calculateRowTotal = () => {
             const qty = parseFloat(qtyInput.value) || 0;
             const price = parseFloat(priceInput.value) || 0;
@@ -70,7 +93,6 @@ document.addEventListener('DOMContentLoaded', () => {
         qtyInput.addEventListener('input', calculateRowTotal);
         priceInput.addEventListener('input', calculateRowTotal);
 
-        // 삭제 버튼 이벤트
         deleteBtn.addEventListener('click', () => {
             if (itemsContainer.children.length > 1) {
                 row.remove();
@@ -83,7 +105,6 @@ document.addEventListener('DOMContentLoaded', () => {
         itemsContainer.appendChild(row);
     };
 
-    // 전체 영수증 총계 계산
     const calculateGrandTotal = () => {
         let grandTotal = 0;
         const rows = itemsContainer.querySelectorAll('.item-row');
@@ -95,17 +116,19 @@ document.addEventListener('DOMContentLoaded', () => {
         receiptTotalEl.textContent = formatCurrency(grandTotal);
     };
 
-    // 초기 행 1개 추가
     addItemRow();
-
-    // 품목 추가 버튼 클릭
     addItemBtn.addEventListener('click', addItemRow);
 
-    // 저장 버튼 클릭 (영수증 일괄 저장)
+    // ─── 저장 (날짜 유효성 검증 추가) ───
     saveTransactionBtn.addEventListener('click', () => {
         const date = transactionDateInput.value;
         if (!date) {
             alert('거래일자를 선택해주세요.');
+            return;
+        }
+
+        if (!isValidDate(date)) {
+            alert('유효하지 않은 날짜입니다. (예: 2026-05-22)');
             return;
         }
 
@@ -119,13 +142,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const price = parseFloat(row.querySelector('.item-price').value);
             const remarks = row.querySelector('.item-remarks').value.trim();
 
-            // 값이 입력되어 있는 행만 저장 (비어있는 행 무시)
             if (name || !isNaN(qty) || !isNaN(price)) {
                 if (!name || isNaN(qty) || isNaN(price)) {
-                    isValid = false; // 일부만 채워진 경우 에러
+                    isValid = false;
                 } else {
                     newEntries.push({
-                        id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
+                        id: generateId(),
                         date: date,
                         name: name,
                         qty: qty,
@@ -136,7 +158,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
         });
-        
+
         if (newEntries.length === 0) {
             alert('최소 1개 이상의 품목을 정확히 입력해주세요.');
             return;
@@ -147,43 +169,39 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        // 기존 데이터에 병합
         transactions = [...transactions, ...newEntries];
         saveToLocalStorage();
         renderTable();
-        
-        // 폼 초기화
+
         itemsContainer.innerHTML = '';
         addItemRow();
         calculateGrandTotal();
-        
+
         alert('성공적으로 저장되었습니다.');
     });
 
-    // 로컬 스토리지에 저장
+    // ─── localStorage 저장 (에러 처리 포함) ───
     const saveToLocalStorage = () => {
-        localStorage.setItem('inventoryData', JSON.stringify(transactions));
+        try {
+            localStorage.setItem('inventoryData', JSON.stringify(transactions));
+        } catch (e) {
+            alert('⚠️ 저장 공간이 부족합니다! CSV 백업 후 오래된 데이터를 정리해주세요.');
+        }
     };
 
-    // 테이블 렌더링
+    // ─── 테이블 렌더링 ───
     const renderTable = () => {
         dataTableBody.innerHTML = '';
-        
+
         // 1. 검색 필터링 (다중 키워드 AND 검색)
         let filteredTransactions = transactions.filter(item => {
             if (!searchQuery) return true;
-            
-            // 쉼표(,)나 띄어쓰기로 키워드를 분리하고 빈 값 제거
             const keywords = searchQuery.toLowerCase().split(/[\s,]+/).filter(k => k.trim() !== '');
-            
-            // 해당 행의 모든 데이터를 하나의 문자열로 합침 (단가, 수량, 총액도 검색 가능하도록)
             const searchableText = (item.date + ' ' + item.name + ' ' + (item.remarks || '') + ' ' + item.price + ' ' + item.qty + ' ' + item.total).toLowerCase();
-
-            // 입력한 '모든' 키워드가 이 합쳐진 문자열 안에 존재하는지 확인 (AND 검색)
             return keywords.every(keyword => searchableText.includes(keyword));
         });
-        
-        // 2. 정렬 로직 (날짜순, 같은 날짜면 입력된 순서대로 안정 정렬)
+
+        // 2. 정렬 로직
         let sortedTransactions = [...filteredTransactions];
         sortedTransactions.sort((a, b) => {
             const dateA = new Date(a.date);
@@ -194,18 +212,19 @@ document.addEventListener('DOMContentLoaded', () => {
             return isSortAscending ? dateA - dateB : dateB - dateA;
         });
 
-        // 페이지네이션 계산
-        const totalPages = Math.ceil(sortedTransactions.length / rowsPerPage) || 1;
+        // 3. 페이지네이션
+        const totalPages = Math.ceil(sortedTransactions.length / ROWS_PER_PAGE) || 1;
         if (currentPage > totalPages) currentPage = totalPages;
 
-        const startIndex = (currentPage - 1) * rowsPerPage;
-        const endIndex = startIndex + rowsPerPage;
+        const startIndex = (currentPage - 1) * ROWS_PER_PAGE;
+        const endIndex = startIndex + ROWS_PER_PAGE;
         const paginatedData = sortedTransactions.slice(startIndex, endIndex);
 
+        // 4. 행 렌더링
         let lastDate = null;
         paginatedData.forEach(item => {
             const displayDate = item.date === lastDate ? '' : item.date;
-            
+
             const tr = document.createElement('tr');
             tr.innerHTML = `
                 <td>${displayDate}</td>
@@ -223,85 +242,14 @@ document.addEventListener('DOMContentLoaded', () => {
             lastDate = item.date;
         });
 
-        // 수정/삭제 이벤트 위임
-        dataTableBody.onclick = (e) => {
-            const target = e.target;
-            if (target.classList.contains('delete-row-btn')) {
-                if(confirm('정말 이 항목을 삭제하시겠습니까?')) {
-                    const id = target.getAttribute('data-id');
-                    transactions = transactions.filter(t => t.id !== id);
-                    saveToLocalStorage();
-                    renderTable();
-                }
-            } else if (target.classList.contains('edit-row-btn')) {
-                const id = target.getAttribute('data-id');
-                const item = transactions.find(t => t.id === id);
-                if (!item) return;
-
-                const tr = target.closest('tr');
-                tr.innerHTML = `
-                    <td><input type="text" class="edit-date" value="${item.date}" maxlength="10"></td>
-                    <td><input type="text" class="edit-name" value="${item.name.replace(/"/g, '&quot;')}"></td>
-                    <td><input type="number" class="edit-qty" value="${item.qty}" min="1"></td>
-                    <td><input type="number" class="edit-price" value="${item.price}" min="0"></td>
-                    <td><input type="text" class="edit-remarks" value="${(item.remarks || '').replace(/"/g, '&quot;')}"></td>
-                    <td>${formatCurrency(item.total)}</td>
-                    <td style="white-space: nowrap;">
-                        <button class="save-edit-btn" data-id="${item.id}">저장</button>
-                        <button class="cancel-edit-btn">취소</button>
-                    </td>
-                `;
-
-                // 날짜 하이픈 자동 변환 (수정 폼 내)
-                const editDateInput = tr.querySelector('.edit-date');
-                editDateInput.addEventListener('input', (ev) => {
-                    let val = ev.target.value.replace(/[^0-9]/g, '');
-                    if (val.length > 8) val = val.substring(0, 8);
-                    if (val.length >= 6) {
-                        val = val.substring(0,4) + '-' + val.substring(4,6) + '-' + val.substring(6);
-                    } else if (val.length >= 4) {
-                        val = val.substring(0,4) + '-' + val.substring(4);
-                    }
-                    ev.target.value = val;
-                });
-            } else if (target.classList.contains('save-edit-btn')) {
-                const id = target.getAttribute('data-id');
-                const tr = target.closest('tr');
-                const newDate = tr.querySelector('.edit-date').value;
-                const newName = tr.querySelector('.edit-name').value.trim();
-                const newQty = parseFloat(tr.querySelector('.edit-qty').value);
-                const newPrice = parseFloat(tr.querySelector('.edit-price').value);
-                const newRemarks = tr.querySelector('.edit-remarks').value.trim();
-
-                if (!newDate || !newName || isNaN(newQty) || isNaN(newPrice)) {
-                    alert('모든 값을 올바르게 입력해주세요.');
-                    return;
-                }
-
-                const itemIndex = transactions.findIndex(t => t.id === id);
-                if (itemIndex > -1) {
-                    transactions[itemIndex].date = newDate;
-                    transactions[itemIndex].name = newName;
-                    transactions[itemIndex].qty = newQty;
-                    transactions[itemIndex].price = newPrice;
-                    transactions[itemIndex].remarks = newRemarks;
-                    transactions[itemIndex].total = newQty * newPrice;
-                    saveToLocalStorage();
-                    renderTable();
-                }
-            } else if (target.classList.contains('cancel-edit-btn')) {
-                renderTable(); // 수정 취소 시 원래 테이블 렌더링
-            }
-        };
-        
         renderPagination(totalPages);
     };
 
-    // 페이지네이션 렌더링 함수
+    // ─── 페이지네이션 ───
     const renderPagination = (totalPages) => {
         if (!paginationContainer) return;
         paginationContainer.innerHTML = '';
-        
+
         if (totalPages <= 1) return;
 
         // 이전 버튼
@@ -313,11 +261,11 @@ document.addEventListener('DOMContentLoaded', () => {
             paginationContainer.appendChild(prevBtn);
         }
 
-        // 페이지 번호
-        let startPage = Math.max(1, currentPage - 2);
-        let endPage = Math.min(totalPages, startPage + 4);
-        if (endPage - startPage < 4) {
-            startPage = Math.max(1, endPage - 4);
+        // 페이지 번호 (상수 활용)
+        let startPage = Math.max(1, currentPage - Math.floor(PAGE_BUTTON_COUNT / 2));
+        let endPage = Math.min(totalPages, startPage + PAGE_BUTTON_COUNT - 1);
+        if (endPage - startPage < PAGE_BUTTON_COUNT - 1) {
+            startPage = Math.max(1, endPage - PAGE_BUTTON_COUNT + 1);
         }
 
         for (let i = startPage; i <= endPage; i++) {
@@ -367,7 +315,74 @@ document.addEventListener('DOMContentLoaded', () => {
         paginationContainer.appendChild(pageInfoDiv);
     };
 
-    // 날짜 정렬 버튼 클릭
+    // ─── 수정/삭제 이벤트 위임 (renderTable 외부에서 1회만 등록) ───
+    dataTableBody.addEventListener('click', (e) => {
+        const target = e.target;
+        if (target.classList.contains('delete-row-btn')) {
+            if (confirm('정말 이 항목을 삭제하시겠습니까?')) {
+                const id = target.getAttribute('data-id');
+                transactions = transactions.filter(t => t.id !== id);
+                saveToLocalStorage();
+                renderTable();
+            }
+        } else if (target.classList.contains('edit-row-btn')) {
+            const id = target.getAttribute('data-id');
+            const item = transactions.find(t => t.id === id);
+            if (!item) return;
+
+            const tr = target.closest('tr');
+            tr.innerHTML = `
+                <td><input type="text" class="edit-date" value="${item.date}" maxlength="10"></td>
+                <td><input type="text" class="edit-name" value="${item.name.replace(/"/g, '&quot;')}"></td>
+                <td><input type="number" class="edit-qty" value="${item.qty}" min="1"></td>
+                <td><input type="number" class="edit-price" value="${item.price}" min="0"></td>
+                <td><input type="text" class="edit-remarks" value="${(item.remarks || '').replace(/"/g, '&quot;')}"></td>
+                <td>${formatCurrency(item.total)}</td>
+                <td style="white-space: nowrap;">
+                    <button class="save-edit-btn" data-id="${item.id}">저장</button>
+                    <button class="cancel-edit-btn">취소</button>
+                </td>
+            `;
+
+            // 추출된 함수로 날짜 자동 포맷 적용
+            applyDateAutoFormat(tr.querySelector('.edit-date'));
+        } else if (target.classList.contains('save-edit-btn')) {
+            const id = target.getAttribute('data-id');
+            const tr = target.closest('tr');
+            const newDate = tr.querySelector('.edit-date').value;
+            const newName = tr.querySelector('.edit-name').value.trim();
+            const newQty = parseFloat(tr.querySelector('.edit-qty').value);
+            const newPrice = parseFloat(tr.querySelector('.edit-price').value);
+            const newRemarks = tr.querySelector('.edit-remarks').value.trim();
+
+            if (!newDate || !newName || isNaN(newQty) || isNaN(newPrice)) {
+                alert('모든 값을 올바르게 입력해주세요.');
+                return;
+            }
+
+            // 날짜 유효성 검증
+            if (!isValidDate(newDate)) {
+                alert('유효하지 않은 날짜입니다. (예: 2026-05-22)');
+                return;
+            }
+
+            const itemIndex = transactions.findIndex(t => t.id === id);
+            if (itemIndex > -1) {
+                transactions[itemIndex].date = newDate;
+                transactions[itemIndex].name = newName;
+                transactions[itemIndex].qty = newQty;
+                transactions[itemIndex].price = newPrice;
+                transactions[itemIndex].remarks = newRemarks;
+                transactions[itemIndex].total = newQty * newPrice;
+                saveToLocalStorage();
+                renderTable();
+            }
+        } else if (target.classList.contains('cancel-edit-btn')) {
+            renderTable();
+        }
+    });
+
+    // ─── 날짜 정렬 ───
     sortDateBtn.addEventListener('click', () => {
         isSortAscending = !isSortAscending;
         const icon = sortDateBtn.querySelector('.sort-icon');
@@ -375,17 +390,16 @@ document.addEventListener('DOMContentLoaded', () => {
         renderTable();
     });
 
-    // CSV 내보내기 기능
+    // ─── CSV 내보내기 ───
     exportCsvBtn.addEventListener('click', () => {
-        if(transactions.length === 0) {
+        if (transactions.length === 0) {
             alert('내보낼 데이터가 없습니다.');
             return;
         }
 
-        let csvContent = "data:text/csv;charset=utf-8,\uFEFF"; // 한글 깨짐 방지 BOM 추가
+        let csvContent = "data:text/csv;charset=utf-8,\uFEFF";
         csvContent += "거래일자,품목,수량,개당단가,비고,총액\n";
 
-        // 정렬된 순서대로 내보내기 위해 정렬 로직 동일하게 적용
         let sortedTransactions = [...transactions].sort((a, b) => {
             return isSortAscending ? new Date(a.date) - new Date(b.date) : new Date(b.date) - new Date(a.date);
         });
@@ -405,7 +419,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.body.removeChild(link);
     });
 
-    // CSV 복원(불러오기) 및 되돌리기 기능
+    // ─── CSV 복원 및 되돌리기 ───
     const importCsvInput = document.getElementById('importCsvInput');
     const importCsvBtn = document.getElementById('importCsvBtn');
     const undoImportBtn = document.getElementById('undoImportBtn');
@@ -430,7 +444,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 transactions = JSON.parse(backup);
                 saveToLocalStorage();
                 renderTable();
-                localStorage.removeItem('inventoryData_backup'); // 되돌린 후 백업본 삭제
+                localStorage.removeItem('inventoryData_backup');
                 checkBackupExists();
                 alert('이전 상태로 복구되었습니다.');
             }
@@ -450,14 +464,13 @@ document.addEventListener('DOMContentLoaded', () => {
             reader.onload = (event) => {
                 const csv = event.target.result;
                 const lines = csv.split('\n').map(line => line.trim()).filter(line => line);
-                
+
                 if (lines.length < 2) {
                     alert('올바른 파일이 아니거나 복원할 데이터가 없습니다.');
                     return;
                 }
 
                 const newEntries = [];
-                // 첫 줄(헤더) 제외하고 파싱
                 for (let i = 1; i < lines.length; i++) {
                     const row = lines[i];
                     const cols = [];
@@ -482,15 +495,15 @@ document.addEventListener('DOMContentLoaded', () => {
                         const qty = parseFloat(cols[2]);
                         const price = parseFloat(cols[3]);
                         let remarks = '';
-                        
+
                         // 예전 백업 포맷(5개 컬럼)과 새로운 포맷(6개 컬럼) 호환 처리
                         if (cols.length >= 6) {
                             remarks = cols[4].replace(/^"|"$/g, '').replace(/""/g, '"');
                         }
-                        
+
                         if (date && name && !isNaN(qty) && !isNaN(price)) {
                             newEntries.push({
-                                id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
+                                id: generateId(),
                                 date: date,
                                 name: name,
                                 qty: qty,
@@ -511,28 +524,38 @@ document.addEventListener('DOMContentLoaded', () => {
                 localStorage.setItem('inventoryData_backup', JSON.stringify(transactions));
                 checkBackupExists();
 
-                const mergeMode = prompt('💡 스마트 병합 옵션을 선택해주세요.\\n\\n1: 📝 비고란 복구 (현재 단가/수량 유지 + 백업파일에서 비고란만 가져오기)\\n2: 🔄 최신 업데이트 (백업파일 단가/수량으로 변경 + 기존 비고란 유지)\\n3: ➕ 단순 이어붙이기 (중복 허용)\\n4: ⚠️ 완전 덮어쓰기 (기존 데이터 모두 삭제)\\n\\n원하시는 작업의 번호(1~4)를 입력하세요.', '1');
+                const mergeMode = prompt('\u{1F4A1} 스마트 병합 옵션을 선택해주세요.\n\n1: \u{1F4DD} 비고란 복구 (현재 단가/수량 유지 + 백업파일에서 비고란만 가져오기)\n2: \u{1F504} 최신 업데이트 (백업파일 단가/수량으로 변경 + 기존 비고란 유지)\n3: \u2795 단순 이어붙이기 (중복 허용)\n4: \u26A0\uFE0F 완전 덮어쓰기 (기존 데이터 모두 삭제)\n\n원하시는 작업의 번호(1~4)를 입력하세요.', '1');
 
                 if (mergeMode === '1') {
-                    // 1: 빈칸 채우기 (현재 데이터 유지 + 파일에서 비고란 가져오기)
+                    // 1: 비고란 복구 — 같은 날짜+품목 중복 항목도 정확히 1:1 매칭
+                    const matchedIndices = new Set();
                     newEntries.forEach(newObj => {
-                        const existing = transactions.find(t => t.date === newObj.date && t.name === newObj.name);
-                        if (existing) {
-                            if (!existing.remarks && newObj.remarks) existing.remarks = newObj.remarks;
+                        const existingIdx = transactions.findIndex((t, idx) =>
+                            !matchedIndices.has(idx) && t.date === newObj.date && t.name === newObj.name
+                        );
+                        if (existingIdx > -1) {
+                            matchedIndices.add(existingIdx);
+                            if (!transactions[existingIdx].remarks && newObj.remarks) {
+                                transactions[existingIdx].remarks = newObj.remarks;
+                            }
                         } else {
                             transactions.push(newObj);
                         }
                     });
                 } else if (mergeMode === '2') {
-                    // 2: 최신화 (파일의 가격/수량으로 덮어쓰되, 파일에 비고 없으면 기존 비고 유지)
+                    // 2: 최신화 — 같은 날짜+품목 중복 항목도 정확히 1:1 매칭
+                    const matchedIndices = new Set();
                     newEntries.forEach(newObj => {
-                        const existing = transactions.find(t => t.date === newObj.date && t.name === newObj.name);
-                        if (existing) {
-                            existing.qty = newObj.qty;
-                            existing.price = newObj.price;
-                            existing.total = newObj.total;
+                        const existingIdx = transactions.findIndex((t, idx) =>
+                            !matchedIndices.has(idx) && t.date === newObj.date && t.name === newObj.name
+                        );
+                        if (existingIdx > -1) {
+                            matchedIndices.add(existingIdx);
+                            transactions[existingIdx].qty = newObj.qty;
+                            transactions[existingIdx].price = newObj.price;
+                            transactions[existingIdx].total = newObj.total;
                             if (newObj.remarks) {
-                                existing.remarks = newObj.remarks;
+                                transactions[existingIdx].remarks = newObj.remarks;
                             }
                         } else {
                             transactions.push(newObj);
@@ -545,7 +568,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     // 4: 완전 덮어쓰기
                     transactions = newEntries;
                 } else {
-                    // 취소 시 백업 롤백 및 종료
+                    // 취소
                     localStorage.removeItem('inventoryData_backup');
                     checkBackupExists();
                     alert('복원 작업이 취소되었습니다.');
@@ -555,13 +578,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 saveToLocalStorage();
                 renderTable();
-                alert('요청하신 방식으로 데이터 병합이 완료되었습니다! 🎉');
-                importCsvInput.value = ''; // 파일 선택 초기화
+                alert('요청하신 방식으로 데이터 병합이 완료되었습니다! \u{1F389}');
+                importCsvInput.value = '';
             };
             reader.readAsText(file, 'utf-8');
         });
     }
 
-    // 초기 테이블 렌더링
+    // ─── 초기화 ───
     renderTable();
 });
