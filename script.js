@@ -169,13 +169,18 @@ document.addEventListener('DOMContentLoaded', () => {
     const renderTable = () => {
         dataTableBody.innerHTML = '';
         
-        // 1. 검색 필터링
+        // 1. 검색 필터링 (다중 키워드 AND 검색)
         let filteredTransactions = transactions.filter(item => {
             if (!searchQuery) return true;
-            const searchLower = searchQuery.toLowerCase();
-            return item.name.toLowerCase().includes(searchLower) || 
-                   item.date.includes(searchLower) || 
-                   (item.remarks && item.remarks.toLowerCase().includes(searchLower));
+            
+            // 쉼표(,)나 띄어쓰기로 키워드를 분리하고 빈 값 제거
+            const keywords = searchQuery.toLowerCase().split(/[\s,]+/).filter(k => k.trim() !== '');
+            
+            // 해당 행의 모든 데이터를 하나의 문자열로 합침 (단가, 수량, 총액도 검색 가능하도록)
+            const searchableText = \`\${item.date} \${item.name} \${item.remarks || ''} \${item.price} \${item.qty} \${item.total}\`.toLowerCase();
+
+            // 입력한 '모든' 키워드가 이 합쳐진 문자열 안에 존재하는지 확인 (AND 검색)
+            return keywords.every(keyword => searchableText.includes(keyword));
         });
         
         // 2. 정렬 로직 (날짜순, 같은 날짜면 입력된 순서대로 안정 정렬)
