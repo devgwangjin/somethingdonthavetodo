@@ -80,18 +80,31 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const qtyInput = row.querySelector('.item-qty');
         const priceInput = row.querySelector('.item-price');
+        const totalInput = row.querySelector('.item-total');
         const deleteBtn = row.querySelector('.btn-delete');
 
         const calculateRowTotal = () => {
             const qty = parseFloat(qtyInput.value) || 0;
             const price = parseFloat(priceInput.value) || 0;
             const total = qty * price;
-            row.querySelector('.item-total').textContent = formatCurrency(total);
+            totalInput.value = total || '';
+            calculateGrandTotal();
+        };
+
+        const calculateRowPrice = () => {
+            const qty = parseFloat(qtyInput.value) || 0;
+            const total = parseFloat(totalInput.value) || 0;
+            if (qty > 0) {
+                priceInput.value = Math.round(total / qty) || '';
+            } else {
+                priceInput.value = '';
+            }
             calculateGrandTotal();
         };
 
         qtyInput.addEventListener('input', calculateRowTotal);
         priceInput.addEventListener('input', calculateRowTotal);
+        totalInput.addEventListener('input', calculateRowPrice);
 
         deleteBtn.addEventListener('click', () => {
             if (itemsContainer.children.length > 1) {
@@ -337,7 +350,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td><input type="number" class="edit-qty" value="${item.qty}" min="1"></td>
                 <td><input type="number" class="edit-price" value="${item.price}" min="0"></td>
                 <td><input type="text" class="edit-remarks" value="${(item.remarks || '').replace(/"/g, '&quot;')}"></td>
-                <td>${formatCurrency(item.total)}</td>
+                <td><input type="number" class="edit-total" value="${item.total}" min="0"></td>
                 <td style="white-space: nowrap;">
                     <button class="save-edit-btn" data-id="${item.id}">저장</button>
                     <button class="cancel-edit-btn">취소</button>
@@ -346,6 +359,31 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // 추출된 함수로 날짜 자동 포맷 적용
             applyDateAutoFormat(tr.querySelector('.edit-date'));
+
+            // 수정 모드 내 실시간 가격/총액 연동
+            const editQtyInput = tr.querySelector('.edit-qty');
+            const editPriceInput = tr.querySelector('.edit-price');
+            const editTotalInput = tr.querySelector('.edit-total');
+
+            const calculateEditTotal = () => {
+                const qty = parseFloat(editQtyInput.value) || 0;
+                const price = parseFloat(editPriceInput.value) || 0;
+                editTotalInput.value = qty * price || '';
+            };
+
+            const calculateEditPrice = () => {
+                const qty = parseFloat(editQtyInput.value) || 0;
+                const total = parseFloat(editTotalInput.value) || 0;
+                if (qty > 0) {
+                    editPriceInput.value = Math.round(total / qty) || '';
+                } else {
+                    editPriceInput.value = '';
+                }
+            };
+
+            editQtyInput.addEventListener('input', calculateEditTotal);
+            editPriceInput.addEventListener('input', calculateEditTotal);
+            editTotalInput.addEventListener('input', calculateEditPrice);
         } else if (target.classList.contains('save-edit-btn')) {
             const id = target.getAttribute('data-id');
             const tr = target.closest('tr');
