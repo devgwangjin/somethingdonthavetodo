@@ -69,7 +69,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ─── 상태 관리 ───
     let transactions = JSON.parse(localStorage.getItem('inventoryData')) || [];
-    let isSortAscending = true;
+    let isSortAscending = false;
     let currentPage = 1;
     const paginationContainer = document.getElementById('paginationContainer');
 
