@@ -148,6 +148,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const rows = itemsContainer.querySelectorAll('.item-row');
         let isValid = true;
         let newEntries = [];
+        const receiptId = generateId();
+        const createdAt = Date.now();
 
         rows.forEach(row => {
             const name = row.querySelector('.item-name').value.trim();
@@ -161,6 +163,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else {
                     newEntries.push({
                         id: generateId(),
+                        receiptId: receiptId,
+                        createdAt: createdAt,
                         date: date,
                         name: name,
                         qty: qty,
@@ -220,7 +224,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const dateA = new Date(a.date);
             const dateB = new Date(b.date);
             if (dateA.getTime() === dateB.getTime()) {
-                return a.id.localeCompare(b.id);
+                const timeA = a.createdAt || 0;
+                const timeB = b.createdAt || 0;
+                if (timeA === timeB) {
+                    return a.id.localeCompare(b.id);
+                }
+                return isSortAscending ? timeA - timeB : timeB - timeA;
             }
             return isSortAscending ? dateA - dateB : dateB - dateA;
         });
@@ -234,11 +243,17 @@ document.addEventListener('DOMContentLoaded', () => {
         const paginatedData = sortedTransactions.slice(startIndex, endIndex);
 
         // 4. 행 렌더링
-        let lastDate = null;
+        let lastReceiptId = null;
         paginatedData.forEach(item => {
-            const displayDate = item.date === lastDate ? '' : item.date;
+            const currentGroupKey = item.receiptId || item.date;
+            const isNewGroup = lastReceiptId !== null && currentGroupKey !== lastReceiptId;
+            const showDivider = lastReceiptId !== null && isNewGroup;
+            const displayDate = (lastReceiptId === null || isNewGroup) ? item.date : '';
 
             const tr = document.createElement('tr');
+            if (showDivider) {
+                tr.classList.add('receipt-divider');
+            }
             tr.innerHTML = `
                 <td>${displayDate}</td>
                 <td>${item.name}</td>
@@ -252,7 +267,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 </td>
             `;
             dataTableBody.appendChild(tr);
-            lastDate = item.date;
+            lastReceiptId = currentGroupKey;
         });
 
         renderPagination(totalPages);
@@ -509,6 +524,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 const newEntries = [];
+                let currentReceiptId = generateId();
+                let lastDateInCsv = null;
+                const importTimestamp = Date.now();
+
                 for (let i = 1; i < lines.length; i++) {
                     const row = lines[i];
                     const cols = [];
@@ -540,8 +559,14 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
 
                         if (date && name && !isNaN(qty) && !isNaN(price)) {
+                            if (lastDateInCsv !== date) {
+                                currentReceiptId = generateId();
+                                lastDateInCsv = date;
+                            }
                             newEntries.push({
                                 id: generateId(),
+                                receiptId: currentReceiptId,
+                                createdAt: importTimestamp + i,
                                 date: date,
                                 name: name,
                                 qty: qty,

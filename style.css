@@ -408,3 +408,8 @@ td input.edit-name {
 .page-jump-btn {
     padding: 0.3rem 0.6rem;
 }
+
+/* 영수증 그룹 구분선 */
+tr.receipt-divider td {
+    border-top: 2px solid rgba(88, 166, 255, 0.25);
+}
