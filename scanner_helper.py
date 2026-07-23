@@ -26,6 +26,7 @@ config = {
 }
 processed_files = set()
 connected_websockets = set()
+valid_models = []
 
 def load_config():
     global config
@@ -59,8 +60,31 @@ def save_processed_files():
     except Exception as e:
         print(f"[기록] processed_files.json 저장 실패: {e}")
 
+def check_gemini_api_key(api_key):
+    """Google Gemini API Key 검증 및 지원 모델 목록 조회"""
+    global valid_models
+    clean_key = api_key.strip()
+    if not clean_key:
+        return False
+    try:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models?key={clean_key}"
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            res_body = resp.read().decode("utf-8")
+            res_json = json.loads(res_body)
+            models = [m["name"].replace("models/", "") for m in res_json.get("models", []) if "generateContent" in m.get("supportedGenerationMethods", [])]
+            if models:
+                valid_models = models
+                print(f"[AI] API Key 검증 성공! 사용 가능 모델: {models[:3]}")
+                return True
+    except urllib.error.HTTPError as he:
+        print(f"[AI Key 경고] 구글 API Key 인증 실패 (HTTP {he.code}). 입력하신 키가 'AIzaSy'로 시작하는 구글 API 키가 맞는지 확인해 주세요.")
+    except Exception as e:
+        print(f"[AI Key 경고] API Key 검증 중 오류: {e}")
+    return False
+
 def parse_with_gemini_api(file_path, api_key):
-    """Google Gemini REST API를 활용한 명세서 분석 (모델 자동 폴백 지원)"""
+    """Google Gemini REST API를 활용한 명세서 분석"""
     clean_key = api_key.strip()
     if not clean_key:
         print("[AI] Gemini API Key가 설정되지 않았습니다.")
@@ -106,12 +130,11 @@ def parse_with_gemini_api(file_path, api_key):
             }
         }
 
-        # 시도할 구글 AI 모델 후보군 (호환 가능한 엔드포인트)
-        model_candidates = [
-            "gemini-1.5-flash-latest",
+        # 구글 서버에서 사용 가능한 모델 후보 목록
+        model_candidates = valid_models if valid_models else [
             "gemini-1.5-flash",
+            "gemini-1.5-flash-latest",
             "gemini-2.0-flash-exp",
-            "gemini-2.5-flash",
             "gemini-1.5-pro"
         ]
 
@@ -136,18 +159,16 @@ def parse_with_gemini_api(file_path, api_key):
                         raw_text = raw_text[:-3]
 
                     parsed_result = json.loads(raw_text.strip())
-                    print(f"[AI] 모델({model_name})로 {Path(file_path).name} 파싱 성공: {len(parsed_result.get('items', []))}건 추출됨")
+                    print(f"[AI] 모델({model_name})로 {Path(file_path).name} 파싱 성공! ({len(parsed_result.get('items', []))}건 추출됨)")
                     return parsed_result
             except urllib.error.HTTPError as he:
                 last_error = f"HTTP {he.code}: {he.reason}"
-                if he.code == 404:
-                    continue  # 404인 경우 다음 모델 후보 시도
+                if he.code in [404, 400]:
+                    continue
                 else:
-                    print(f"[AI] API 응답 에러 ({model_name}): {last_error}")
                     break
             except Exception as ex:
                 last_error = str(ex)
-                print(f"[AI] 파싱 중 에러 ({model_name}): {last_error}")
                 break
 
         print(f"[AI] Gemini API 분석 실패 ({Path(file_path).name}): {last_error}")
@@ -222,6 +243,7 @@ async def websocket_handler(websocket):
                 if data.get("type") == "CONFIG_SYNC":
                     if data.get("apiKey"):
                         config["geminiApiKey"] = data["apiKey"]
+                        check_gemini_api_key(data["apiKey"])
                     if data.get("printerIp"):
                         config["printerIp"] = data["printerIp"]
                     if data.get("printerBoxNum"):
@@ -278,6 +300,9 @@ async def scan_loop():
 async def main():
     load_config()
     load_processed_files()
+
+    if config.get("geminiApiKey"):
+        check_gemini_api_key(config["geminiApiKey"])
 
     import websockets
     print("=" * 60)
