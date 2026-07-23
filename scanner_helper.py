@@ -321,7 +321,7 @@ async def main():
     print("📌 웹소켓 서버 포트: ws://localhost:8765")
     print("=" * 60)
 
-    server = await websockets.serve(websocket_handler, "localhost", 8765)
+    server = await websockets.serve(websocket_handler, "localhost", 8765, ping_interval=20, ping_timeout=20)
     await asyncio.gather(server.wait_closed(), scan_loop())
 
 if __name__ == "__main__":

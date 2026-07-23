@@ -703,27 +703,29 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // 로컬 헬퍼 프로그램 웹소켓 연동 (ws://localhost:8765)
-    let helperSocket = null;
-    let helperReconnectTimer = null;
-
+    // 로컬 헬퍼 프로그램 웹소켓 연동 (ws://localhost:8765) 싱글톤 보장
     const connectToHelper = () => {
-        if (helperSocket && (helperSocket.readyState === WebSocket.OPEN || helperSocket.readyState === WebSocket.CONNECTING)) {
-            const configMsg = {
-                type: 'CONFIG_SYNC',
-                apiKey: localStorage.getItem('geminiApiKey') || '',
-                printerIp: localStorage.getItem('printerIp') || '192.168.0.210',
-                printerBoxNum: localStorage.getItem('printerBoxNum') || '006'
-            };
-            try { helperSocket.send(JSON.stringify(configMsg)); } catch(e){}
-            return;
+        if (window._helperSocket) {
+            if (window._helperSocket.readyState === WebSocket.OPEN) {
+                const configMsg = {
+                    type: 'CONFIG_SYNC',
+                    apiKey: localStorage.getItem('geminiApiKey') || '',
+                    printerIp: localStorage.getItem('printerIp') || '192.168.0.210',
+                    printerBoxNum: localStorage.getItem('printerBoxNum') || '006'
+                };
+                try { window._helperSocket.send(JSON.stringify(configMsg)); } catch(e){}
+                return;
+            }
+            if (window._helperSocket.readyState === WebSocket.CONNECTING) {
+                return;
+            }
         }
 
         try {
-            helperSocket = new WebSocket('ws://localhost:8765');
+            const socket = new WebSocket('ws://localhost:8765');
+            window._helperSocket = socket;
 
-            helperSocket.onopen = () => {
-                if (helperReconnectTimer) clearTimeout(helperReconnectTimer);
+            socket.onopen = () => {
                 if (helperStatusBadge) {
                     helperStatusBadge.textContent = '🟢 헬퍼 연동됨';
                     helperStatusBadge.className = 'status-badge status-on';
@@ -734,10 +736,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     printerIp: localStorage.getItem('printerIp') || '192.168.0.210',
                     printerBoxNum: localStorage.getItem('printerBoxNum') || '006'
                 };
-                helperSocket.send(JSON.stringify(configMsg));
+                socket.send(JSON.stringify(configMsg));
             };
 
-            helperSocket.onmessage = (event) => {
+            socket.onmessage = (event) => {
                 try {
                     const data = JSON.parse(event.data);
                     if (data.type === 'SCAN_PARSED') {
@@ -748,20 +750,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             };
 
-            helperSocket.onclose = () => {
+            socket.onclose = (e) => {
                 if (helperStatusBadge) {
                     helperStatusBadge.textContent = '🔴 헬퍼 미연동';
                     helperStatusBadge.className = 'status-badge status-off';
                 }
-                if (!helperReconnectTimer) {
-                    helperReconnectTimer = setTimeout(() => {
-                        helperReconnectTimer = null;
-                        connectToHelper();
-                    }, 5000);
-                }
+                window._helperSocket = null;
             };
 
-            helperSocket.onerror = () => {
+            socket.onerror = () => {
                 if (helperStatusBadge) {
                     helperStatusBadge.textContent = '🔴 헬퍼 미연동';
                     helperStatusBadge.className = 'status-badge status-off';
