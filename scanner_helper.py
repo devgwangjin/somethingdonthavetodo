@@ -26,7 +26,7 @@ config = {
 }
 processed_files = set()
 connected_websockets = set()
-active_model = "gemini-2.0-flash"
+available_models = ["gemini-2.0-flash"]  # API Key 검증 시 자동으로 채워짐
 
 def load_config():
     global config
@@ -61,8 +61,8 @@ def save_processed_files():
         print(f"[기록] processed_files.json 저장 실패: {e}")
 
 def check_gemini_api_key(api_key):
-    """Google Gemini API Key 검증 및 해당 키가 지원하는 최적 모델 자동 감지"""
-    global active_model
+    """Google Gemini API Key 검증 및 사용 가능한 모델 목록 수집"""
+    global available_models
     clean_key = api_key.strip()
     if not clean_key:
         return False
@@ -72,29 +72,27 @@ def check_gemini_api_key(api_key):
         with urllib.request.urlopen(req, timeout=10) as resp:
             res_body = resp.read().decode("utf-8")
             res_json = json.loads(res_body)
-            models = [m["name"].replace("models/", "") for m in res_json.get("models", []) if "generateContent" in m.get("supportedGenerationMethods", [])]
-            if models:
-                chosen = None
-                for candidate in ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.5-flash"]:
-                    if candidate in models:
-                        chosen = candidate
-                        break
-                if not chosen:
-                    chosen = models[0]
-                active_model = chosen
-                print(f"[AI] API Key 검증 성공! 최적 모델 1개 고정: {active_model}")
+            all_models = [m["name"].replace("models/", "") for m in res_json.get("models", []) if "generateContent" in m.get("supportedGenerationMethods", [])]
+            if all_models:
+                # 우선순위: 무료 한도가 넉넉하고 빠른 모델 순서
+                preferred = ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.5-pro", "gemini-1.5-pro"]
+                selected = [m for m in preferred if m in all_models]
+                if not selected:
+                    selected = all_models[:3]
+                available_models = selected
+                print(f"[AI] API Key 검증 성공! 사용 가능 모델 {len(selected)}개: {selected}")
+                print(f"[AI] 429 속도 제한 시 모델 간 자동 스위칭 (라운드로빈 방식)")
                 return True
     except urllib.error.HTTPError as he:
         print(f"[AI Key 경고] 구글 API Key 인증 실패 (HTTP {he.code}). 키를 다시 확인해 주세요.")
     except Exception as e:
         print(f"[AI Key 경고] API Key 검증 중 오류: {e}")
     
-    active_model = "gemini-2.0-flash"
+    available_models = ["gemini-2.0-flash"]
     return False
 
 def parse_with_gemini_api(file_path, api_key):
-    """Google Gemini 단일 지정 모델 분석 (429 발생 시 60초 대기 후 최대 3회 재시도)"""
-    global active_model
+    """Google Gemini 라운드로빈 분석: 429 시 즉시 다른 모델로 스위칭, 전부 429면 60초 대기 후 재시도"""
     clean_key = api_key.strip()
     if not clean_key:
         print("[AI] Gemini API Key가 설정되지 않았습니다.")
@@ -140,48 +138,51 @@ def parse_with_gemini_api(file_path, api_key):
             }
         }
 
-        target_model = active_model if active_model else "gemini-2.0-flash"
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{target_model}:generateContent?key={clean_key}"
         headers = {"Content-Type": "application/json"}
         data_json = json.dumps(payload).encode("utf-8")
+        models_to_try = list(available_models)  # 복사본 사용
 
-        # 429 발생 시 60초 대기 후 최대 3회까지만 재시도
-        max_retries = 3
-        for attempt in range(max_retries):
-            req = urllib.request.Request(url, data=data_json, headers=headers, method="POST")
-            try:
-                with urllib.request.urlopen(req, timeout=60) as resp:
-                    res_body = resp.read().decode("utf-8")
-                    res_json = json.loads(res_body)
+        # 라운드 최대 2회 (1라운드: 모델 순회, 2라운드: 60초 대기 후 재순회)
+        for round_num in range(2):
+            if round_num > 0:
+                print(f"[AI] 모든 모델 속도 제한. 60초 대기 후 2라운드 시작...")
+                time.sleep(60)
 
-                    raw_text = res_json["candidates"][0]["content"]["parts"][0]["text"].strip()
-                    if raw_text.startswith("```json"):
-                        raw_text = raw_text[7:]
-                    if raw_text.startswith("```"):
-                        raw_text = raw_text[3:]
-                    if raw_text.endswith("```"):
-                        raw_text = raw_text[:-3]
+            for model_name in models_to_try:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={clean_key}"
+                req = urllib.request.Request(url, data=data_json, headers=headers, method="POST")
+                try:
+                    with urllib.request.urlopen(req, timeout=60) as resp:
+                        res_body = resp.read().decode("utf-8")
+                        res_json = json.loads(res_body)
 
-                    parsed_result = json.loads(raw_text.strip())
-                    print(f"[AI] {target_model} 모델로 {Path(file_path).name} 파싱 100% 성공! ({len(parsed_result.get('items', []))}건 추출됨)")
-                    return parsed_result
+                        raw_text = res_json["candidates"][0]["content"]["parts"][0]["text"].strip()
+                        if raw_text.startswith("```json"):
+                            raw_text = raw_text[7:]
+                        if raw_text.startswith("```"):
+                            raw_text = raw_text[3:]
+                        if raw_text.endswith("```"):
+                            raw_text = raw_text[:-3]
 
-            except urllib.error.HTTPError as he:
-                if he.code == 429:
-                    if attempt < max_retries - 1:
-                        wait_sec = 60 * (attempt + 1)  # 60초, 120초, ...
-                        print(f"[AI] 속도 제한(429) 감지. {wait_sec}초 대기 후 재시도합니다... (시도 {attempt+1}/{max_retries})")
-                        time.sleep(wait_sec)
-                        continue
+                        parsed_result = json.loads(raw_text.strip())
+                        print(f"[AI] {model_name} 모델로 {Path(file_path).name} 파싱 성공! ({len(parsed_result.get('items', []))}건 추출됨)")
+                        return parsed_result
+
+                except urllib.error.HTTPError as he:
+                    if he.code == 429:
+                        print(f"[AI] {model_name} 속도 제한(429). 다음 모델로 즉시 스위칭!")
+                        continue  # 즉시 다음 모델!
+                    elif he.code in [404, 400]:
+                        continue  # 지원 안 되는 모델이면 건너뜀
                     else:
-                        print(f"[AI] 속도 제한(429) {max_retries}회 초과. 나중에 다시 시도합니다.")
-                        return "RATE_LIMITED"  # 특수 값: 429 실패 구분용
-                else:
-                    print(f"[AI] API 응답 에러 ({target_model}): HTTP {he.code} {he.reason}")
+                        print(f"[AI] API 에러 ({model_name}): HTTP {he.code} {he.reason}")
+                        return None
+                except Exception as ex:
+                    print(f"[AI] 파싱 오류 ({model_name}, {Path(file_path).name}): {ex}")
                     return None
-            except Exception as ex:
-                print(f"[AI] 파싱 중 오류 발생 ({Path(file_path).name}): {ex}")
-                return None
+
+        print(f"[AI] 2라운드 모두 실패. 나중에 다시 시도합니다. ({Path(file_path).name})")
+        return "RATE_LIMITED"
 
     except Exception as e:
         print(f"[AI] 파일 읽기 오류 ({Path(file_path).name}): {e}")
@@ -288,7 +289,7 @@ async def scan_loop():
                 print(f"[감시] 감지된 새 문서 파일: {Path(file_path).name}")
                 api_key = config.get("geminiApiKey")
                 if api_key:
-                    print(f"[AI] {active_model} AI 분석 시작... ({Path(file_path).name})")
+                    print(f"[AI] 라운드로빈 분석 시작... ({Path(file_path).name})")
                     result = parse_with_gemini_api(file_path, api_key)
                     if result == "RATE_LIMITED":
                         # 429 속도 제한: 이 파일은 processed에 넣지 않아서 다음 루프에서 재시도
