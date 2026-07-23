@@ -87,11 +87,13 @@ def parse_with_gemini_api(file_path, api_key):
             file_bytes = f.read()
             base64_data = base64.b64encode(file_bytes).decode("utf-8")
 
-        # 토큰 절약을 위한 슬림 프롬프트
+        # 다중 명세서 PDF 및 단일 이미지 모두 지원하는 다중 인식 프롬프트
         prompt_text = (
-            "거래명세서에서 거래일자(YYYY-MM-DD)와 자재 목록을 추출해줘. "
-            "응답 포맷: {\"date\": \"YYYY-MM-DD\", \"items\": [{\"name\": \"품목명\", \"qty\": 수량숫자, \"price\": 단가숫자, \"total\": 총액숫자, \"remarks\": \"비고\"}]} "
-            "마크다운 없이 순수 JSON만 응답해."
+            "이 파일에 1개 이상의 거래명세서 문서/페이지가 들어있을 수 있습니다. "
+            "각 거래명세서 문서마다 'date'(YYYY-MM-DD), 'supplier'(상호/공급자명), 'items'(자재 목록: name, qty, price, total, remarks) 필드를 갖는 "
+            "JSON 객체들의 배열(Array) 포맷으로 추출해줘. 단 1개뿐이어도 길이 1짜리 배열로 응답해. "
+            "응답 예시: [{\"date\": \"2026-07-20\", \"supplier\": \"오포산업\", \"items\": [{\"name\": \"부스바\", \"qty\": 10, \"price\": 5000, \"total\": 50000, \"remarks\": \"\"}]}] "
+            "마크다운 없이 오직 JSON 텍스트만 응답해."
         )
 
         payload = {
@@ -136,11 +138,10 @@ def parse_with_gemini_api(file_path, api_key):
                         if candidates:
                             parts = candidates[0].get("content", {}).get("parts", [])
                             if parts and "text" in parts[0]:
-                                raw_text = parts[0]["text"].strip()
-                                json_match = re.search(r'\{.*\}', raw_text, re.DOTALL)
+                                json_match = re.search(r'(\[.*\]|\{.*\})', raw_text, re.DOTALL)
                                 clean_json_str = json_match.group(0) if json_match else raw_text
                                 parsed_result = json.loads(clean_json_str)
-                                print(f"[AI] 🎉 {target_model} 모델 파싱 성공! ({Path(file_path).name})")
+                                print(f"[AI] 🎉 {target_model} 파싱 성공! ({Path(file_path).name})")
                                 return parsed_result
 
                 except urllib.error.HTTPError as he:
@@ -295,8 +296,14 @@ async def scan_loop():
                 print(f"[AI] Gemini AI 분석 진행 중... ({Path(file_path).name})")
                 result = parse_with_gemini_api(file_path, api_key)
                 if result:
-                    await broadcast_scan_data(result)
-                    print(f"[성공] 🚀 웹 앱으로 분석 결과 전송 완료!")
+                    if isinstance(result, list):
+                        for idx, doc_data in enumerate(result):
+                            await broadcast_scan_data(doc_data)
+                            print(f"[성공] 🚀 웹 앱으로 다중 명세서 ({idx+1}/{len(result)}) 전송 완료!")
+                            await asyncio.sleep(1)
+                    else:
+                        await broadcast_scan_data(result)
+                        print(f"[성공] 🚀 웹 앱으로 분석 결과 전송 완료!")
                 else:
                     print(f"[알림] 분석 실패 또는 취소됨 ({Path(file_path).name})")
 

@@ -810,7 +810,8 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             calculateGrandTotal();
-            alert(`🤖 AI가 스캔된 거래명세서(${scanData.items.length}건)를 읽어 입력했습니다!\n내용을 확인하신 후 [저장하기]를 눌러주세요.`);
+            const supplierInfo = scanData.supplier ? `[${scanData.supplier}] ` : '';
+            alert(`🤖 AI가 스캔된 ${supplierInfo}거래명세서(${scanData.items.length}건)를 읽어 입력했습니다!\n내용을 확인하신 후 [저장하기]를 눌러주세요.`);
         }
     };
 
