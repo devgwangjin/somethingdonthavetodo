@@ -143,9 +143,22 @@ def parse_with_gemini_api(file_path, api_key):
                                 return parsed_result
 
                 except urllib.error.HTTPError as he:
+                    err_body = ""
+                    try:
+                        err_body = he.read().decode("utf-8", errors="ignore")
+                    except Exception:
+                        pass
+
                     if he.code == 429 and attempt == 0:
-                        print(f"[AI 429] {target_model} 한도 대기 ➔ 10초 대기 후 자동 재시도합니다...")
-                        time.sleep(10)
+                        wait_sec = 60
+                        match = re.search(r'retryDelay["\']?:\s*["\']?(\d+(\.\d+)?)s', err_body)
+                        if match:
+                            try:
+                                wait_sec = int(float(match.group(1))) + 2
+                            except Exception:
+                                pass
+                        print(f"[AI 429] {target_model} 분당 한도 초과 ➔ 구글 리셋 지침({wait_sec}초) 대기 후 자동 재시도...")
+                        time.sleep(wait_sec)
                         continue
                     else:
                         print(f"[AI] {target_model} HTTP Error {he.code}: {he.reason}")
