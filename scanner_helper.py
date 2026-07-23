@@ -3,20 +3,20 @@ import sys
 import time
 import json
 import base64
-import glob
 import re
 import asyncio
 import urllib.request
 import urllib.error
 from pathlib import Path
 
-# 설정 파일 및 기록 파일 경로
-CONFIG_PATH = Path(__file__).parent / "config.json"
-PROCESSED_LOG_PATH = Path(__file__).parent / "processed_files.json"
-DOWNLOAD_TEMP_DIR = Path(__file__).parent / "downloaded_scans"
+# ─── 경로 및 설정 ───
+BASE_DIR = Path(__file__).parent
+CONFIG_PATH = BASE_DIR / "config.json"
+PROCESSED_LOG_PATH = BASE_DIR / "processed_files.json"
+DOWNLOAD_TEMP_DIR = BASE_DIR / "downloaded_scans"
 DOWNLOAD_TEMP_DIR.mkdir(exist_ok=True)
 
-# 전역 상태
+# ─── 전역 상태 ───
 config = {
     "printerIp": "192.168.0.210",
     "printerBoxNum": "006",
@@ -26,50 +26,50 @@ config = {
 }
 processed_files = set()
 connected_websockets = set()
-available_models = ["gemini-2.0-flash"]  # API Key 검증 시 자동으로 채워짐
 
 def load_config():
+    """설정 파일 로드"""
     global config
     if CONFIG_PATH.exists():
         try:
             with open(CONFIG_PATH, "r", encoding="utf-8") as f:
                 config.update(json.load(f))
         except Exception as e:
-            print(f"[설정] config.json 로드 실패: {e}")
+            print(f"[설정 오류] config.json 읽기 실패: {e}")
 
 def save_config():
+    """설정 파일 저장"""
     try:
         with open(CONFIG_PATH, "w", encoding="utf-8") as f:
             json.dump(config, f, ensure_ascii=False, indent=2)
     except Exception as e:
-        print(f"[설정] config.json 저장 실패: {e}")
+        print(f"[설정 오류] config.json 저장 실패: {e}")
 
 def load_processed_files():
+    """처리된 파일 목록 로드"""
     global processed_files
     if PROCESSED_LOG_PATH.exists():
         try:
             with open(PROCESSED_LOG_PATH, "r", encoding="utf-8") as f:
                 processed_files = set(json.load(f))
-        except Exception as e:
-            print(f"[기록] processed_files.json 로드 실패: {e}")
+        except Exception:
+            processed_files = set()
 
 def save_processed_files():
+    """처리된 파일 목록 저장"""
     try:
         with open(PROCESSED_LOG_PATH, "w", encoding="utf-8") as f:
             json.dump(list(processed_files), f, ensure_ascii=False, indent=2)
     except Exception as e:
-        print(f"[기록] processed_files.json 저장 실패: {e}")
+        print(f"[기록 오류] processed_files.json 저장 실패: {e}")
 
-def check_gemini_api_key(api_key):
-    """Gemini API Key 설정 업데이트"""
-    clean_key = api_key.strip()
-    if clean_key:
-        print("[AI] Gemini API Key 설정 완료!")
-        return True
-    return False
-
+# ─── Gemini AI 파싱 엔진 ───
 def parse_with_gemini_api(file_path, api_key):
-    """Gemini 1.5 Flash 단일 모델 단 1회 호출 분석 (성공/실패 불문 1회로 종료)"""
+    """
+    Gemini 2.0 Flash 최적화 파싱 엔진
+    - 토큰 소진 최소화 (maxOutputTokens 제한)
+    - 429 에러 발생 시 구글 지침 시간만큼 정밀 대기 후 1회 안전 재시도
+    """
     clean_key = api_key.strip()
     if not clean_key:
         print("[AI] Gemini API Key가 설정되지 않았습니다.")
@@ -87,93 +87,87 @@ def parse_with_gemini_api(file_path, api_key):
             file_bytes = f.read()
             base64_data = base64.b64encode(file_bytes).decode("utf-8")
 
+        # 토큰 절약을 위한 슬림 프롬프트
         prompt_text = (
-            "이 거래명세서 이미지/PDF에서 상단 거래일자(YYYY-MM-DD 포맷)와 표 내부의 자재 거래 목록을 추출해줘. "
-            "각 자재 항목은 name(품목명), qty(수량-숫자만), price(개당단가-숫자만), total(총액-숫자만), remarks(비고) 필드를 갖는 JSON 구조로 응답해줘. "
-            "이하여백, 합계 라인은 제외하고 마크다운 코드블록 없이 오직 JSON 텍스트만 리턴해줘. "
-            "응답 예시: {\"date\": \"2026-07-20\", \"items\": [{\"name\": \"명판/300*50\", \"qty\": 40, \"price\": 7000, \"total\": 280000, \"remarks\": \"\"}]}"
+            "거래명세서에서 거래일자(YYYY-MM-DD)와 자재 목록을 추출해줘. "
+            "응답 포맷: {\"date\": \"YYYY-MM-DD\", \"items\": [{\"name\": \"품목명\", \"qty\": 수량숫자, \"price\": 단가숫자, \"total\": 총액숫자, \"remarks\": \"비고\"}]} "
+            "마크다운 없이 순수 JSON만 응답해."
         )
 
         payload = {
             "contents": [
                 {
                     "parts": [
-                        {
-                            "inline_data": {
-                                "mime_type": mime_type,
-                                "data": base64_data
-                            }
-                        },
-                        {
-                            "text": prompt_text
-                        }
+                        {"inline_data": {"mime_type": mime_type, "data": base64_data}},
+                        {"text": prompt_text}
                     ]
                 }
             ],
             "generationConfig": {
-                "response_mime_type": "application/json"
+                "response_mime_type": "application/json",
+                "maxOutputTokens": 1024,
+                "temperature": 0.1
             }
         }
 
         headers = {"Content-Type": "application/json"}
         data_json = json.dumps(payload).encode("utf-8")
         
-        # 구글 계정에 실제 존재하는 정식 엔드포인트 gemini-2.0-flash 사용
-        target_models = ["gemini-2.0-flash", "gemini-2.0-flash-lite"]
+        # 정식 지원 모델 gemini-2.0-flash 사용
+        target_model = "gemini-2.0-flash"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{target_model}:generateContent?key={clean_key}"
         
-        for target_model in target_models:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{target_model}:generateContent?key={clean_key}"
-            
-            for attempt in range(2):
+        for attempt in range(2):
+            try:
+                req = urllib.request.Request(url, data=data_json, headers=headers, method="POST")
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    res_body = resp.read().decode("utf-8")
+                    res_json = json.loads(res_body)
+
+                    candidates = res_json.get("candidates", [])
+                    if candidates:
+                        parts = candidates[0].get("content", {}).get("parts", [])
+                        if parts and "text" in parts[0]:
+                            raw_text = parts[0]["text"].strip()
+                            json_match = re.search(r'\{.*\}', raw_text, re.DOTALL)
+                            clean_json_str = json_match.group(0) if json_match else raw_text
+                            parsed_result = json.loads(clean_json_str)
+                            print(f"[AI] 🎉 {Path(file_path).name} 파싱 성공! ({len(parsed_result.get('items', []))}개 항목)")
+                            return parsed_result
+
+            except urllib.error.HTTPError as he:
+                err_body = ""
                 try:
-                    req = urllib.request.Request(url, data=data_json, headers=headers, method="POST")
-                    with urllib.request.urlopen(req, timeout=30) as resp:
-                        res_body = resp.read().decode("utf-8")
-                        res_json = json.loads(res_body)
+                    err_body = he.read().decode("utf-8", errors="ignore")
+                except Exception:
+                    pass
 
-                        candidates = res_json.get("candidates", [])
-                        if candidates:
-                            parts = candidates[0].get("content", {}).get("parts", [])
-                            if parts and "text" in parts[0]:
-                                raw_text = parts[0]["text"].strip()
-                                json_match = re.search(r'\{.*\}', raw_text, re.DOTALL)
-                                clean_json_str = json_match.group(0) if json_match else raw_text
-                                parsed_result = json.loads(clean_json_str)
-                                print(f"[AI] 🎉 {target_model} 파싱 100% 성공! ({Path(file_path).name})")
-                                return parsed_result
-
-                except urllib.error.HTTPError as he:
-                    err_body = ""
-                    try:
-                        err_body = he.read().decode("utf-8", errors="ignore")
-                    except Exception:
-                        pass
-
-                    if he.code == 429 and attempt == 0:
-                        wait_sec = 60
-                        match = re.search(r'retryDelay["\']?:\s*["\']?(\d+(\.\d+)?)s', err_body)
-                        if match:
-                            try:
-                                wait_sec = int(float(match.group(1))) + 2
-                            except Exception:
-                                pass
-                        print(f"[AI 429] {target_model} 분당 한도 초과 ➔ 구글 리셋 지침({wait_sec}초) 대기 후 자동 재시도...")
-                        time.sleep(wait_sec)
-                        continue
-                    else:
-                        print(f"[AI] {target_model} HTTP Error {he.code}: {he.reason}")
-                        break
-                except Exception as ex:
-                    print(f"[AI] {target_model} 파싱 중 에러 발생 ({Path(file_path).name}): {ex}")
+                if he.code == 429 and attempt == 0:
+                    wait_sec = 60
+                    match = re.search(r'retryDelay["\']?:\s*["\']?(\d+(\.\d+)?)s', err_body)
+                    if match:
+                        try:
+                            wait_sec = int(float(match.group(1))) + 2
+                        except Exception:
+                            pass
+                    print(f"[AI 429] ⏳ 구글 API 한도 대기: {wait_sec}초 후 자동 재시도합니다...")
+                    time.sleep(wait_sec)
+                    continue
+                else:
+                    print(f"[AI] {target_model} 에러 (HTTP {he.code}): {he.reason}")
                     break
+            except Exception as ex:
+                print(f"[AI] 파싱 처리 오류 ({Path(file_path).name}): {ex}")
+                break
 
     except Exception as ex_all:
-        print(f"[AI] 전체 처리 에러: {ex_all}")
+        print(f"[AI] 파일 읽기 실패 ({Path(file_path).name}): {ex_all}")
 
     return None
 
+# ─── 복합기 및 파일 감지 ───
 def fetch_scans_from_fujifilm_printer():
-    """후지필름 Apeos C3570 복합기 Web Box (192.168.0.210 / 006) 수집 시도"""
+    """후지필름 Apeos C3570 복합기 Web Box (192.168.0.210 / 006) 수집"""
     printer_ip = config.get("printerIp", "192.168.0.210")
     box_num = config.get("printerBoxNum", "006")
     if not printer_ip:
@@ -202,17 +196,12 @@ def fetch_scans_from_fujifilm_printer():
     return fetched_files
 
 def find_new_scan_files():
-    """복합기 자동 수집 + 감시 폴더 + Downloads 폴더의 모든 신규 문서 파일 감지 (대소문자 확장자 지원 및 os.scandir 고속화)"""
-    targets = []
+    """감시 대상 폴더들에서 미처리 신규 PDF/이미지 파일 스캔"""
+    targets = [str(DOWNLOAD_TEMP_DIR)]
     
-    # 1. 복합기 다운로드 폴더
-    targets.append(str(DOWNLOAD_TEMP_DIR))
-
-    # 2. 사용자 지정 감시 폴더
     if config.get("watchFolder") and os.path.exists(config["watchFolder"]):
         targets.append(config["watchFolder"])
         
-    # 3. 내 기본 Downloads 폴더
     user_downloads = os.path.join(os.path.expanduser("~"), "Downloads")
     if os.path.exists(user_downloads):
         targets.append(user_downloads)
@@ -241,8 +230,9 @@ def find_new_scan_files():
     found_files.sort(key=lambda x: x[0])
     return [f[1] for f in found_files]
 
+# ─── 웹소켓 통신 서버 ───
 async def websocket_handler(websocket):
-    print(f"[소켓] 웹 앱 클라이언트 연결됨: {websocket.remote_address}")
+    """웹소켓 비동기 연결 관리 (안정적인 핸드셰이크 유지)"""
     connected_websockets.add(websocket)
     try:
         async for message in websocket:
@@ -256,18 +246,16 @@ async def websocket_handler(websocket):
                     if data.get("printerBoxNum"):
                         config["printerBoxNum"] = data["printerBoxNum"]
                     save_config()
-                    print("[소켓] 웹 앱으로부터 설정 동기화 완료! (연결 안정 상태)")
-            except Exception as e:
-                print(f"[소켓] 메시지 처리 오류: {e}")
+            except Exception:
+                pass
     except Exception:
         pass
     finally:
-        connected_websockets.remove(websocket)
-        print("[소켓] 클라이언트 연결 해제됨")
+        connected_websockets.discard(websocket)
 
 async def broadcast_scan_data(scan_data):
+    """파싱 결과를 연결된 웹 앱으로 전송"""
     if not connected_websockets:
-        print("[소켓] 연결된 웹 앱이 없어 데이터를 대기시킵니다.")
         return
     message = json.dumps({"type": "SCAN_PARSED", **scan_data}, ensure_ascii=False)
     for ws in list(connected_websockets):
@@ -276,34 +264,40 @@ async def broadcast_scan_data(scan_data):
         except Exception:
             pass
 
+# ─── 메인 감시 루프 ───
 async def scan_loop():
-    print("[헬퍼] 스캔 감시 루프 시작됨...")
+    print("[헬퍼] 스캔 문서 감시 루프 구동 중...")
     while True:
         try:
+            # 1. 복합기 박스 자동 수집
+            fetch_scans_from_fujifilm_printer()
+
+            # 2. 신규 감지 파일 검색
             new_files = find_new_scan_files()
             for file_path in new_files:
-                print(f"[감시] 감지된 새 문서 파일: {Path(file_path).name}")
+                print(f"[감시] 📄 신규 문서 감지: {Path(file_path).name}")
                 
-                # 결과 여부 상관없이 단 1회 시도 후 즉시 처리완료 마킹 (재호출 폭발 100% 방지)
+                # 중복 호출 방지를 위해 발견 즉시 처리 기록
                 processed_files.add(file_path)
                 save_processed_files()
 
                 api_key = config.get("geminiApiKey")
                 if api_key:
-                    print(f"[AI] gemini-1.5-flash 분석 요청 (1회만 시도)... ({Path(file_path).name})")
+                    print(f"[AI] Gemini AI 분석 진행 중... ({Path(file_path).name})")
                     result = parse_with_gemini_api(file_path, api_key)
                     if result:
                         await broadcast_scan_data(result)
-                        print(f"[성공] 🎉 웹 앱으로 스캔 데이터 전송 완료! ({Path(file_path).name})")
+                        print(f"[성공] 🚀 웹 앱으로 분석 결과 전송 완료!")
                     else:
-                        print(f"[알림] 분석 실패 처리 완료 ({Path(file_path).name})")
+                        print(f"[알림] 분석 실패 또는 취소됨 ({Path(file_path).name})")
                 else:
-                    print("[경고] Gemini API Key가 설정되지 않았습니다. 웹 화면 ⚙️ AI 설정에서 키를 등록해 주세요.")
+                    print("[경고] Gemini API Key가 등록되지 않았습니다. 웹 화면 ⚙️ AI 설정에서 키를 입력해 주세요.")
 
-                await asyncio.sleep(3)
+                # 429 방지: 파일 처리 후 안전 쿨다운 10초 대기
+                await asyncio.sleep(10)
 
         except Exception as e:
-            print(f"[루프] 오류 발생: {e}")
+            print(f"[루프 에러] {e}")
 
         await asyncio.sleep(config.get("pollIntervalSeconds", 5))
 
@@ -311,14 +305,11 @@ async def main():
     load_config()
     load_processed_files()
 
-    if config.get("geminiApiKey"):
-        check_gemini_api_key(config["geminiApiKey"])
-
     import websockets
     print("=" * 60)
-    print("🤖 자재 구매 내역 관리 — 로컬 스캔 헬퍼 백그라운드 서비스")
+    print("🤖 자재 구매 내역 관리 — 로컬 스캔 헬퍼 서비스 (Ver 2.0 Clean)")
     print(f"📌 복합기 IP: {config.get('printerIp')} (박스: {config.get('printerBoxNum')})")
-    print("📌 웹소켓 서버 포트: ws://localhost:8765")
+    print("📌 웹소켓 연동: ws://localhost:8765")
     print("=" * 60)
 
     server = await websockets.serve(websocket_handler, "localhost", 8765, ping_interval=20, ping_timeout=20)
