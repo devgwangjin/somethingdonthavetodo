@@ -412,19 +412,27 @@ async def websocket_handler(websocket):
                         continue
 
                     if base64_data:
-                        print(f"[AI 분석 요청] 📁 수동 업로드 파일 분석 진행 중...")
-                        result = parse_base64_with_gemini_api(base64_data, mime_type, api_key)
-                        if result:
-                            if isinstance(result, list):
-                                for idx, doc_data in enumerate(result):
-                                    await broadcast_scan_data(doc_data)
-                                    print(f"[성공] 🚀 수동 업로드 다중 명세서 ({idx+1}/{len(result)}) 폼 기입 완료!")
-                                    await asyncio.sleep(1)
-                            else:
-                                await broadcast_scan_data(result)
-                                print(f"[성공] 🚀 수동 업로드 명세서 폼 기입 완료!")
-                        else:
-                            await websocket.send(json.dumps({"type": "PARSE_ERROR", "message": "AI가 문서 파싱에 실패했습니다. (API 키 확인 필요)"}, ensure_ascii=False))
+                        print(f"[AI 분석 요청] 📁 수동 업로드 파일 분석 시작! (용량: {len(base64_data)//1024} KB)")
+                        
+                        async def run_direct_parse():
+                            try:
+                                result = await asyncio.to_thread(parse_base64_with_gemini_api, base64_data, mime_type, api_key)
+                                if result:
+                                    if isinstance(result, list):
+                                        for idx, doc_data in enumerate(result):
+                                            await broadcast_scan_data(doc_data)
+                                            print(f"[성공] 🚀 수동 업로드 다중 명세서 ({idx+1}/{len(result)}) 폼 기입 완료!")
+                                            await asyncio.sleep(1)
+                                    else:
+                                        await broadcast_scan_data(result)
+                                        print(f"[성공] 🚀 수동 업로드 명세서 폼 기입 완료!")
+                                else:
+                                    await websocket.send(json.dumps({"type": "PARSE_ERROR", "message": "AI가 문서 파싱에 실패했습니다. (Gemini API 쿼터 확인 필요)"}, ensure_ascii=False))
+                            except Exception as ex_direct:
+                                print(f"[수동 업로드 에러] {ex_direct}")
+                                await websocket.send(json.dumps({"type": "PARSE_ERROR", "message": f"파싱 중 오류 발생: {ex_direct}"}, ensure_ascii=False))
+
+                        asyncio.create_task(run_direct_parse())
 
             except Exception as e:
                 print(f"[소켓 오류] {e}")
@@ -486,7 +494,7 @@ async def main():
     print("📌 웹소켓 연동: ws://localhost:8765")
     print("=" * 60)
 
-    server = await websockets.serve(websocket_handler, "localhost", 8765, ping_interval=20, ping_timeout=20)
+    server = await websockets.serve(websocket_handler, "localhost", 8765, max_size=50 * 1024 * 1024, ping_interval=20, ping_timeout=20)
     await asyncio.gather(server.wait_closed(), scan_loop())
 
 if __name__ == "__main__":
