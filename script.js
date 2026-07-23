@@ -186,6 +186,25 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        // ─── 동일 거래일자 + 동일 품목 중복 검사 ───
+        const duplicates = [];
+        newEntries.forEach(entry => {
+            const isDuplicate = transactions.some(t => 
+                t.date === entry.date && 
+                t.name.trim().toLowerCase() === entry.name.trim().toLowerCase()
+            );
+            if (isDuplicate) {
+                duplicates.push(`• ${entry.date} [${entry.name}]`);
+            }
+        });
+
+        if (duplicates.length > 0) {
+            const dupMsg = `⚠️ [중복 거래 등록 경고]\n\n다음 품목은 이미 해당 거래일자에 등록되어 있습니다:\n\n${duplicates.join('\n')}\n\n동일 날짜의 중복 항목으로 저장하시겠습니까?`;
+            if (!confirm(dupMsg)) {
+                return; // 취소 클릭 시 저장 중단
+            }
+        }
+
         transactions = [...transactions, ...newEntries];
         saveToLocalStorage();
         renderTable();
@@ -977,6 +996,27 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             calculateGrandTotal();
+
+            // ─── AI 기입 직후 중복 품목 존재 여부 실시간 안내 ───
+            const targetDate = transactionDateInput.value;
+            const currentDupes = [];
+            scanData.items.forEach(item => {
+                if (item.name) {
+                    const exists = transactions.some(t => 
+                        t.date === targetDate && 
+                        t.name.trim().toLowerCase() === item.name.trim().toLowerCase()
+                    );
+                    if (exists) {
+                        currentDupes.push(item.name);
+                    }
+                }
+            });
+
+            if (currentDupes.length > 0) {
+                setTimeout(() => {
+                    alert(`⚠️ [중복 알림]\n\n입력된 명세서의 다음 품목은 이미 ${targetDate} 일자에 등록된 기록이 있습니다:\n- ${currentDupes.join(', ')}\n\n내용을 확인하신 후 저장 여부를 결정해 주세요.`);
+                }, 200);
+            }
         }
     };
 
