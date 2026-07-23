@@ -78,13 +78,13 @@ def check_gemini_api_key(api_key):
                 print(f"[AI] API Key 검증 성공! 사용 가능 모델: {models[:3]}")
                 return True
     except urllib.error.HTTPError as he:
-        print(f"[AI Key 경고] 구글 API Key 인증 실패 (HTTP {he.code}). 입력하신 키가 'AIzaSy'로 시작하는 구글 API 키가 맞는지 확인해 주세요.")
+        print(f"[AI Key 경고] 구글 API Key 인증 실패 (HTTP {he.code}). 키를 다시 확인해 주세요.")
     except Exception as e:
         print(f"[AI Key 경고] API Key 검증 중 오류: {e}")
     return False
 
 def parse_with_gemini_api(file_path, api_key):
-    """Google Gemini REST API를 활용한 명세서 분석"""
+    """Google Gemini REST API를 활용한 명세서 분석 (429 딜레이 재시도 지원)"""
     clean_key = api_key.strip()
     if not clean_key:
         print("[AI] Gemini API Key가 설정되지 않았습니다.")
@@ -130,13 +130,8 @@ def parse_with_gemini_api(file_path, api_key):
             }
         }
 
-        # 구글 서버에서 사용 가능한 모델 후보 목록
-        model_candidates = valid_models if valid_models else [
-            "gemini-1.5-flash",
-            "gemini-1.5-flash-latest",
-            "gemini-2.0-flash-exp",
-            "gemini-1.5-pro"
-        ]
+        # 검증된 모델 우선 시도
+        model_candidates = valid_models if valid_models else ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
 
         last_error = None
         for model_name in model_candidates:
@@ -144,32 +139,40 @@ def parse_with_gemini_api(file_path, api_key):
             headers = {"Content-Type": "application/json"}
             data_json = json.dumps(payload).encode("utf-8")
 
-            req = urllib.request.Request(url, data=data_json, headers=headers, method="POST")
-            try:
-                with urllib.request.urlopen(req, timeout=30) as resp:
-                    res_body = resp.read().decode("utf-8")
-                    res_json = json.loads(res_body)
+            # 429 한도 초과 대비 2회 재시도
+            for attempt in range(2):
+                req = urllib.request.Request(url, data=data_json, headers=headers, method="POST")
+                try:
+                    with urllib.request.urlopen(req, timeout=30) as resp:
+                        res_body = resp.read().decode("utf-8")
+                        res_json = json.loads(res_body)
 
-                    raw_text = res_json["candidates"][0]["content"]["parts"][0]["text"].strip()
-                    if raw_text.startswith("```json"):
-                        raw_text = raw_text[7:]
-                    if raw_text.startswith("```"):
-                        raw_text = raw_text[3:]
-                    if raw_text.endswith("```"):
-                        raw_text = raw_text[:-3]
+                        raw_text = res_json["candidates"][0]["content"]["parts"][0]["text"].strip()
+                        if raw_text.startswith("```json"):
+                            raw_text = raw_text[7:]
+                        if raw_text.startswith("```"):
+                            raw_text = raw_text[3:]
+                        if raw_text.endswith("```"):
+                            raw_text = raw_text[:-3]
 
-                    parsed_result = json.loads(raw_text.strip())
-                    print(f"[AI] 모델({model_name})로 {Path(file_path).name} 파싱 성공! ({len(parsed_result.get('items', []))}건 추출됨)")
-                    return parsed_result
-            except urllib.error.HTTPError as he:
-                last_error = f"HTTP {he.code}: {he.reason}"
-                if he.code in [404, 400]:
-                    continue
-                else:
+                        parsed_result = json.loads(raw_text.strip())
+                        print(f"[AI] 모델({model_name})로 {Path(file_path).name} 파싱 성공! ({len(parsed_result.get('items', []))}건 추출됨)")
+                        return parsed_result
+                except urllib.error.HTTPError as he:
+                    last_error = f"HTTP {he.code}: {he.reason}"
+                    if he.code == 429:
+                        print(f"[AI] 요청 속도 제한 (HTTP 429). 3초 후 재시도합니다... (시도 {attempt+1}/2)")
+                        time.sleep(3)
+                        continue
+                    elif he.code in [404, 400]:
+                        break
+                    else:
+                        print(f"[AI] API 응답 에러 ({model_name}): {last_error}")
+                        break
+                except Exception as ex:
+                    last_error = str(ex)
+                    print(f"[AI] 파싱 중 에러 ({model_name}): {last_error}")
                     break
-            except Exception as ex:
-                last_error = str(ex)
-                break
 
         print(f"[AI] Gemini API 분석 실패 ({Path(file_path).name}): {last_error}")
         return None
@@ -291,6 +294,9 @@ async def scan_loop():
                         save_processed_files()
                 else:
                     print("[경고] Gemini API Key가 설정되지 않았습니다. 웹 화면 ⚙️ AI 설정에서 키를 등록해 주세요.")
+
+                # 연속 파일 처리 시 API 속도 제한 방지용 딜레이
+                await asyncio.sleep(2)
 
         except Exception as e:
             print(f"[루프] 오류 발생: {e}")
