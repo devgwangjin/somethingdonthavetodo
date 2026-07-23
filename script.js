@@ -705,15 +705,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 로컬 헬퍼 프로그램 웹소켓 연동 (ws://localhost:8765)
     let helperSocket = null;
+    let helperReconnectTimer = null;
+
     const connectToHelper = () => {
-        if (helperSocket) {
-            try { helperSocket.close(); } catch(e){}
+        if (helperSocket && (helperSocket.readyState === WebSocket.OPEN || helperSocket.readyState === WebSocket.CONNECTING)) {
+            const configMsg = {
+                type: 'CONFIG_SYNC',
+                apiKey: localStorage.getItem('geminiApiKey') || '',
+                printerIp: localStorage.getItem('printerIp') || '192.168.0.210',
+                printerBoxNum: localStorage.getItem('printerBoxNum') || '006'
+            };
+            try { helperSocket.send(JSON.stringify(configMsg)); } catch(e){}
+            return;
         }
 
         try {
             helperSocket = new WebSocket('ws://localhost:8765');
 
             helperSocket.onopen = () => {
+                if (helperReconnectTimer) clearTimeout(helperReconnectTimer);
                 if (helperStatusBadge) {
                     helperStatusBadge.textContent = '🟢 헬퍼 연동됨';
                     helperStatusBadge.className = 'status-badge status-on';
@@ -743,7 +753,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     helperStatusBadge.textContent = '🔴 헬퍼 미연동';
                     helperStatusBadge.className = 'status-badge status-off';
                 }
-                setTimeout(connectToHelper, 5000);
+                if (!helperReconnectTimer) {
+                    helperReconnectTimer = setTimeout(() => {
+                        helperReconnectTimer = null;
+                        connectToHelper();
+                    }, 5000);
+                }
             };
 
             helperSocket.onerror = () => {
