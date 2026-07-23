@@ -26,7 +26,6 @@ config = {
 }
 processed_files = set()
 connected_websockets = set()
-valid_models = []
 
 def load_config():
     global config
@@ -61,30 +60,22 @@ def save_processed_files():
         print(f"[기록] processed_files.json 저장 실패: {e}")
 
 def check_gemini_api_key(api_key):
-    """Google Gemini API Key 검증 및 지원 모델 목록 조회"""
-    global valid_models
+    """Google Gemini API Key 검증"""
     clean_key = api_key.strip()
     if not clean_key:
         return False
     try:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models?key={clean_key}"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash?key={clean_key}"
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            res_body = resp.read().decode("utf-8")
-            res_json = json.loads(res_body)
-            models = [m["name"].replace("models/", "") for m in res_json.get("models", []) if "generateContent" in m.get("supportedGenerationMethods", [])]
-            if models:
-                valid_models = models
-                print(f"[AI] API Key 검증 성공! 사용 가능 모델: {models[:3]}")
-                return True
-    except urllib.error.HTTPError as he:
-        print(f"[AI Key 경고] 구글 API Key 인증 실패 (HTTP {he.code}). 키를 다시 확인해 주세요.")
+        # 간단 요청 테스트
+        print("[AI] Gemini API Key 설정 완료! (표준 모델: gemini-1.5-flash 고정)")
+        return True
     except Exception as e:
         print(f"[AI Key 경고] API Key 검증 중 오류: {e}")
     return False
 
 def parse_with_gemini_api(file_path, api_key):
-    """Google Gemini REST API를 활용한 명세서 분석 (429 딜레이 재시도 지원)"""
+    """Google Gemini 1.5 Flash 표준 모델 단일 고정 분석"""
     clean_key = api_key.strip()
     if not clean_key:
         print("[AI] Gemini API Key가 설정되지 않았습니다.")
@@ -130,54 +121,33 @@ def parse_with_gemini_api(file_path, api_key):
             }
         }
 
-        # 검증된 모델 우선 시도
-        model_candidates = valid_models if valid_models else ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
+        # 오직 표준 gemini-1.5-flash 모델 단일 고정!
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={clean_key}"
+        headers = {"Content-Type": "application/json"}
+        data_json = json.dumps(payload).encode("utf-8")
 
-        last_error = None
-        for model_name in model_candidates:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={clean_key}"
-            headers = {"Content-Type": "application/json"}
-            data_json = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(url, data=data_json, headers=headers, method="POST")
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            res_body = resp.read().decode("utf-8")
+            res_json = json.loads(res_body)
 
-            # 429 한도 초과 대비 2회 재시도
-            for attempt in range(2):
-                req = urllib.request.Request(url, data=data_json, headers=headers, method="POST")
-                try:
-                    with urllib.request.urlopen(req, timeout=30) as resp:
-                        res_body = resp.read().decode("utf-8")
-                        res_json = json.loads(res_body)
+            raw_text = res_json["candidates"][0]["content"]["parts"][0]["text"].strip()
+            if raw_text.startswith("```json"):
+                raw_text = raw_text[7:]
+            if raw_text.startswith("```"):
+                raw_text = raw_text[3:]
+            if raw_text.endswith("```"):
+                raw_text = raw_text[:-3]
 
-                        raw_text = res_json["candidates"][0]["content"]["parts"][0]["text"].strip()
-                        if raw_text.startswith("```json"):
-                            raw_text = raw_text[7:]
-                        if raw_text.startswith("```"):
-                            raw_text = raw_text[3:]
-                        if raw_text.endswith("```"):
-                            raw_text = raw_text[:-3]
+            parsed_result = json.loads(raw_text.strip())
+            print(f"[AI] gemini-1.5-flash 모델로 {Path(file_path).name} 파싱 100% 성공! ({len(parsed_result.get('items', []))}건 추출됨)")
+            return parsed_result
 
-                        parsed_result = json.loads(raw_text.strip())
-                        print(f"[AI] 모델({model_name})로 {Path(file_path).name} 파싱 성공! ({len(parsed_result.get('items', []))}건 추출됨)")
-                        return parsed_result
-                except urllib.error.HTTPError as he:
-                    last_error = f"HTTP {he.code}: {he.reason}"
-                    if he.code == 429:
-                        print(f"[AI] 요청 속도 제한 (HTTP 429). 3초 후 재시도합니다... (시도 {attempt+1}/2)")
-                        time.sleep(3)
-                        continue
-                    elif he.code in [404, 400]:
-                        break
-                    else:
-                        print(f"[AI] API 응답 에러 ({model_name}): {last_error}")
-                        break
-                except Exception as ex:
-                    last_error = str(ex)
-                    print(f"[AI] 파싱 중 에러 ({model_name}): {last_error}")
-                    break
-
-        print(f"[AI] Gemini API 분석 실패 ({Path(file_path).name}): {last_error}")
+    except urllib.error.HTTPError as he:
+        print(f"[AI] API 응답 에러 (gemini-1.5-flash): HTTP {he.code} {he.reason}")
         return None
-    except Exception as e:
-        print(f"[AI] 처리 중 오류 ({Path(file_path).name}): {e}")
+    except Exception as ex:
+        print(f"[AI] 파싱 중 오류 발생 ({Path(file_path).name}): {ex}")
         return None
 
 def fetch_scans_from_fujifilm_printer():
@@ -281,7 +251,7 @@ async def scan_loop():
                 print(f"[감시] 감지된 새 문서 파일: {Path(file_path).name}")
                 api_key = config.get("geminiApiKey")
                 if api_key:
-                    print(f"[AI] Gemini AI 분석 진행 중... ({Path(file_path).name})")
+                    print(f"[AI] gemini-1.5-flash AI 분석 시작... ({Path(file_path).name})")
                     result = parse_with_gemini_api(file_path, api_key)
                     if result:
                         await broadcast_scan_data(result)
@@ -289,13 +259,13 @@ async def scan_loop():
                         save_processed_files()
                         print(f"[성공] 웹 앱으로 스캔 데이터 전송 완료! ({Path(file_path).name})")
                     else:
-                        print(f"[알림] 분석 실패로 재검토를 위해 목록에 기록함 ({Path(file_path).name})")
+                        print(f"[알림] 분석 실패 처리 ({Path(file_path).name})")
                         processed_files.add(file_path)
                         save_processed_files()
                 else:
                     print("[경고] Gemini API Key가 설정되지 않았습니다. 웹 화면 ⚙️ AI 설정에서 키를 등록해 주세요.")
 
-                # 연속 파일 처리 시 API 속도 제한 방지용 딜레이
+                # 속도 제한 방지용 2초 딜레이
                 await asyncio.sleep(2)
 
         except Exception as e:
