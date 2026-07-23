@@ -251,13 +251,12 @@ async def websocket_handler(websocket):
                 if data.get("type") == "CONFIG_SYNC":
                     if data.get("apiKey"):
                         config["geminiApiKey"] = data["apiKey"]
-                        check_gemini_api_key(data["apiKey"])
                     if data.get("printerIp"):
                         config["printerIp"] = data["printerIp"]
                     if data.get("printerBoxNum"):
                         config["printerBoxNum"] = data["printerBoxNum"]
                     save_config()
-                    print("[소켓] 웹 앱으로부터 설정 동기화 완료!")
+                    print("[소켓] 웹 앱으로부터 설정 동기화 완료! (연결 안정 상태)")
             except Exception as e:
                 print(f"[소켓] 메시지 처리 오류: {e}")
     except Exception:
