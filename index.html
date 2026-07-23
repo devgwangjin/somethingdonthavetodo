@@ -33,6 +33,23 @@
                 </div>
             </div>
 
+            <!-- 다중 명세서 묶음 진행 상태 배너 -->
+            <div id="multiDocBanner" class="card scan-queue-banner" style="display: none; background: linear-gradient(135deg, #112d4e 0%, #1f4287 100%); border: 1px solid #3fbee8; margin-bottom: 20px; padding: 14px 20px; border-radius: 12px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <span style="font-size: 22px;">📋</span>
+                        <div>
+                            <strong style="color: #3fbee8; font-size: 15px;">다중 거래명세서 묶음 순차 작성 중</strong>
+                            <p id="multiDocStatusText" style="font-size: 13px; color: #d0e8f2; margin: 2px 0 0 0;">총 8건 중 1번째 문서 폼에 기입됨 ([저장하기] 누르면 다음 명세서로 자동 전환)</p>
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <button type="button" id="nextMultiDocBtn" class="btn-primary" style="background: #3fbee8; color: #112d4e; font-weight: 700; font-size: 13px; height: 36px; padding: 0 16px;">다음 명세서 폼 기입 ⏭️</button>
+                        <button type="button" id="cancelMultiDocBtn" class="btn-outline" style="border-color: #ff4d4f; color: #ff4d4f; font-size: 13px; height: 36px; padding: 0 12px;">묶음 종료 ❌</button>
+                    </div>
+                </div>
+            </div>
+
             <!-- 입력 섹션 (영수증 형태) -->
             <section class="card input-section">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px;">

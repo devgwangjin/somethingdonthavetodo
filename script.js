@@ -194,7 +194,18 @@ document.addEventListener('DOMContentLoaded', () => {
         addItemRow();
         calculateGrandTotal();
 
-        alert('성공적으로 저장되었습니다.');
+        // 다중 명세서 묶음 진행 중인 경우 자동으로 다음 명세서 폼 기입!
+        if (multiDocsQueue.length > 0 && currentMultiDocIndex < multiDocsQueue.length - 1) {
+            currentMultiDocIndex++;
+            loadCurrentMultiDoc();
+        } else if (multiDocsQueue.length > 0 && currentMultiDocIndex >= multiDocsQueue.length - 1) {
+            multiDocsQueue = [];
+            currentMultiDocIndex = 0;
+            if (multiDocBanner) multiDocBanner.style.display = 'none';
+            alert('🎉 묶음 문서 내 모든 거래명세서 저장이 성공적으로 완료되었습니다!');
+        } else {
+            alert('성공적으로 저장되었습니다.');
+        }
     });
 
     // ─── localStorage 저장 (에러 처리 포함) ───
@@ -854,7 +865,11 @@ document.addEventListener('DOMContentLoaded', () => {
                             triggerDirectUploadBtn.disabled = false;
                             triggerDirectUploadBtn.textContent = '📁 PDF/이미지 명세서 선택 (AI 분석)';
                         }
-                        fillFormWithAiData(data);
+                        if (Array.isArray(data.multiDocs)) {
+                            handleMultiDocsReceived(data.multiDocs);
+                        } else {
+                            handleMultiDocsReceived([data]);
+                        }
                     } else if (data.type === 'PARSE_ERROR') {
                         if (triggerAiParseBtn) {
                             triggerAiParseBtn.disabled = false;
@@ -885,8 +900,51 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    // AI가 분석한 스캔 데이터를 폼에 기입하는 함수
-    const fillFormWithAiData = (scanData) => {
+    // ─── 다중 명세서 묶음 순차 기입 컨트롤러 ───
+    let multiDocsQueue = [];
+    let currentMultiDocIndex = 0;
+
+    const multiDocBanner = document.getElementById('multiDocBanner');
+    const multiDocStatusText = document.getElementById('multiDocStatusText');
+    const nextMultiDocBtn = document.getElementById('nextMultiDocBtn');
+    const cancelMultiDocBtn = document.getElementById('cancelMultiDocBtn');
+
+    const loadCurrentMultiDoc = () => {
+        if (currentMultiDocIndex < multiDocsQueue.length) {
+            const doc = multiDocsQueue[currentMultiDocIndex];
+            if (multiDocBanner) multiDocBanner.style.display = 'block';
+            if (multiDocStatusText) {
+                const supplierStr = doc.supplier ? `[${doc.supplier}] ` : '';
+                multiDocStatusText.textContent = `총 ${multiDocsQueue.length}건 중 ${currentMultiDocIndex + 1}번째 ${supplierStr}명세서 기입됨 ([저장하기] 누르면 다음 명세서로 자동 전환)`;
+            }
+            fillFormWithSingleDoc(doc);
+        } else {
+            if (multiDocBanner) multiDocBanner.style.display = 'none';
+            multiDocsQueue = [];
+            currentMultiDocIndex = 0;
+            alert('🎉 모든 거래명세서 작성이 성공적으로 완료되었습니다!');
+        }
+    };
+
+    if (nextMultiDocBtn) {
+        nextMultiDocBtn.addEventListener('click', () => {
+            currentMultiDocIndex++;
+            loadCurrentMultiDoc();
+        });
+    }
+
+    if (cancelMultiDocBtn) {
+        cancelMultiDocBtn.addEventListener('click', () => {
+            if (confirm('다중 명세서 순차 기입을 종료하시겠습니까?')) {
+                multiDocsQueue = [];
+                currentMultiDocIndex = 0;
+                if (multiDocBanner) multiDocBanner.style.display = 'none';
+            }
+        });
+    }
+
+    // AI가 분석한 스캔 데이터 1건을 폼에 기입하는 전용 함수
+    const fillFormWithSingleDoc = (scanData) => {
         if (scanData.date) {
             let cleanDate = scanData.date.replace(/[\.\/]/g, '-').trim();
             if (/^\d{8}$/.test(cleanDate)) {
@@ -919,9 +977,15 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             calculateGrandTotal();
-            const supplierInfo = scanData.supplier ? `[${scanData.supplier}] ` : '';
-            alert(`🤖 AI가 스캔된 ${supplierInfo}거래명세서(${scanData.items.length}건)를 읽어 입력했습니다!\n내용을 확인하신 후 [저장하기]를 눌러주세요.`);
         }
+    };
+
+    // 소켓 수신 핸들러 내부에서 multiDocs 처리
+    const handleMultiDocsReceived = (docs) => {
+        if (!Array.isArray(docs) || docs.length === 0) return;
+        multiDocsQueue = docs;
+        currentMultiDocIndex = 0;
+        loadCurrentMultiDoc();
     };
 
     connectToHelper();

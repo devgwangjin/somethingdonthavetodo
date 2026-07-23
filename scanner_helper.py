@@ -375,14 +375,9 @@ async def websocket_handler(websocket):
 
                         result = parse_with_gemini_api(target_file, api_key)
                         if result:
-                            if isinstance(result, list):
-                                for idx, doc_data in enumerate(result):
-                                    await broadcast_scan_data(doc_data)
-                                    print(f"[성공] 🚀 다중 명세서 ({idx+1}/{len(result)}) 폼 기입 완료!")
-                                    await asyncio.sleep(1)
-                            else:
-                                await broadcast_scan_data(result)
-                                print(f"[성공] 🚀 폼 기입 완료! ({Path(target_file).name})")
+                            docs_list = result if isinstance(result, list) else [result]
+                            await broadcast_scan_data({"multiDocs": docs_list})
+                            print(f"[성공] 🚀 다중 명세서 (총 {len(docs_list)}건) 웹 앱 전달 완료! ({Path(target_file).name})")
                         else:
                             await websocket.send(json.dumps({"type": "PARSE_ERROR", "message": "AI 파싱 분석에 실패했습니다. (Gemini API 응답 없음/오류)"}, ensure_ascii=False))
 
@@ -418,14 +413,9 @@ async def websocket_handler(websocket):
                             try:
                                 result = await asyncio.to_thread(parse_base64_with_gemini_api, base64_data, mime_type, api_key)
                                 if result:
-                                    if isinstance(result, list):
-                                        for idx, doc_data in enumerate(result):
-                                            await broadcast_scan_data(doc_data)
-                                            print(f"[성공] 🚀 수동 업로드 다중 명세서 ({idx+1}/{len(result)}) 폼 기입 완료!")
-                                            await asyncio.sleep(1)
-                                    else:
-                                        await broadcast_scan_data(result)
-                                        print(f"[성공] 🚀 수동 업로드 명세서 폼 기입 완료!")
+                                    docs_list = result if isinstance(result, list) else [result]
+                                    await broadcast_scan_data({"multiDocs": docs_list})
+                                    print(f"[성공] 🚀 수동 업로드 다중 명세서 (총 {len(docs_list)}건) 웹 앱 전달 완료!")
                                 else:
                                     await websocket.send(json.dumps({"type": "PARSE_ERROR", "message": "AI가 문서 파싱에 실패했습니다. (Gemini API 쿼터 확인 필요)"}, ensure_ascii=False))
                             except Exception as ex_direct:
