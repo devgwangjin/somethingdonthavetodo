@@ -4,14 +4,17 @@ import time
 import json
 import base64
 import glob
+import re
 import asyncio
 import urllib.request
 import urllib.error
 from pathlib import Path
 
-# 설정 파일 경로
+# 설정 파일 및 기록 파일 경로
 CONFIG_PATH = Path(__file__).parent / "config.json"
 PROCESSED_LOG_PATH = Path(__file__).parent / "processed_files.json"
+DOWNLOAD_TEMP_DIR = Path(__file__).parent / "downloaded_scans"
+DOWNLOAD_TEMP_DIR.mkdir(exist_ok=True)
 
 # 전역 상태
 config = {
@@ -59,7 +62,7 @@ def save_processed_files():
 def parse_with_gemini_api(file_path, api_key):
     """Google Gemini 1.5 Flash REST API를 활용한 명세서 분석"""
     if not api_key:
-        print("[AI] API Key가 설정되지 않았습니다.")
+        print("[AI] Gemini API Key가 설정되지 않았습니다.")
         return None
 
     file_ext = Path(file_path).suffix.lower()
@@ -112,7 +115,6 @@ def parse_with_gemini_api(file_path, api_key):
             res_json = json.loads(res_body)
 
             raw_text = res_json["candidates"][0]["content"]["parts"][0]["text"].strip()
-            # 마크다운 코드블럭 제거 처리
             if raw_text.startswith("```json"):
                 raw_text = raw_text[7:]
             if raw_text.startswith("```"):
@@ -121,37 +123,75 @@ def parse_with_gemini_api(file_path, api_key):
                 raw_text = raw_text[:-3]
 
             parsed_result = json.loads(raw_text.strip())
-            print(f"[AI] {file_path} 파싱 성공: {len(parsed_result.get('items', []))}건 추출됨")
+            print(f"[AI] {Path(file_path).name} 파싱 성공: {len(parsed_result.get('items', []))}건 추출됨")
             return parsed_result
     except Exception as e:
         print(f"[AI] Gemini API 분석 실패 ({file_path}): {e}")
         return None
 
+def fetch_scans_from_fujifilm_printer():
+    """후지필름 Apeos C3570 복합기 Web Box (192.168.0.210 / 006)에서 직접 최신 스캔 파일 감지 및 수집 시도"""
+    printer_ip = config.get("printerIp", "192.168.0.210")
+    box_num = config.get("printerBoxNum", "006")
+    if not printer_ip:
+        return []
+
+    fetched_files = []
+    try:
+        # 후지필름 Web Box CGI / REST API 호출 테스트
+        cgi_url = f"http://{printer_ip}/cgi-bin/mft/box_doc_list.cgi?box_num={box_num}"
+        req = urllib.request.Request(cgi_url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            if resp.status == 200:
+                html_body = resp.read().decode("utf-8", errors="ignore")
+                # doc_id 패턴 파싱시도
+                doc_ids = re.findall(r'doc_id=["\']?(\w+)', html_body)
+                for doc_id in doc_ids:
+                    get_url = f"http://{printer_ip}/cgi-bin/mft/box_doc_get.cgi?box_num={box_num}&doc_id={doc_id}"
+                    save_file_path = DOWNLOAD_TEMP_DIR / f"scan_box_{doc_id}.pdf"
+                    if str(save_file_path) not in processed_files and not save_file_path.exists():
+                        g_req = urllib.request.Request(get_url, headers={"User-Agent": "Mozilla/5.0"})
+                        with urllib.request.urlopen(g_req, timeout=10) as g_resp:
+                            with open(save_file_path, "wb") as f_out:
+                                f_out.write(g_resp.read())
+                        fetched_files.append(str(save_file_path))
+    except Exception:
+        pass  # 복합기 cgi 연동 시 예외 발생 시 수동 다운로드 감시 폴백으로 유연 작동
+
+    return fetched_files
+
 def find_new_scan_files():
-    """감시 폴더 및 내 다운로드 폴더에서 새로 추가된 스캔 파일 찾기"""
+    """복합기 자동 수집 + 감시 폴더 + 내 Downloads 폴더에서 신규 스캔 파일 감지"""
     targets = []
     
-    # 1. 사용자 지정 감시 폴더
+    # 1. 복합기 자동 다운로드 폴더
+    targets.append(str(DOWNLOAD_TEMP_DIR))
+
+    # 2. 사용자 지정 감시 폴더
     if config.get("watchFolder") and os.path.exists(config["watchFolder"]):
         targets.append(config["watchFolder"])
         
-    # 2. 내 기본 Downloads 폴더
+    # 3. 내 기본 Downloads 폴더
     user_downloads = os.path.join(os.path.expanduser("~"), "Downloads")
     if os.path.exists(user_downloads):
         targets.append(user_downloads)
+
+    # 복합기 웹에서 직접 수집 시도
+    fetch_scans_from_fujifilm_printer()
 
     found_files = []
     for folder in targets:
         for ext in ["*.pdf", "*.jpg", "*.jpeg", "*.png"]:
             for file_path in glob.glob(os.path.join(folder, ext)):
-                # 스캔 관련 파일명이거나 최근 30분 내 생성된 파일 대상
                 file_name = os.path.basename(file_path).lower()
-                if ("스캔" in file_name or "scan" in file_name or "doc" in file_name or "img" in file_name):
+                # 스캔 파일이거나 다운로드된 최신 문서
+                if ("스캔" in file_name or "scan" in file_name or "doc" in file_name or "img" in file_name or "scan_box" in file_name):
                     mtime = os.path.getmtime(file_path)
-                    if file_path not in processed_files and (time.time() - mtime < 1800):
+                    # 최근 1시간 이내에 생성된 파일 중 미처리건 대상
+                    if file_path not in processed_files and (time.time() - mtime < 3600):
                         found_files.append((mtime, file_path))
 
-    found_files.sort(key=lambda x: x[0])  # 시간순 정렬
+    found_files.sort(key=lambda x: x[0])
     return [f[1] for f in found_files]
 
 async def websocket_handler(websocket):
@@ -195,14 +235,16 @@ async def scan_loop():
         try:
             new_files = find_new_scan_files()
             for file_path in new_files:
-                print(f"[감시] 감지된 새 파일: {file_path}")
+                print(f"[감시] 감지된 새 스캔 파일: {file_path}")
                 api_key = config.get("geminiApiKey")
                 if api_key:
+                    print(f"[AI] Gemini AI 분석 진행 중... ({Path(file_path).name})")
                     result = parse_with_gemini_api(file_path, api_key)
                     if result:
                         await broadcast_scan_data(result)
                         processed_files.add(file_path)
                         save_processed_files()
+                        print(f"[성공] 웹 앱으로 스캔 데이터 전송 완료! ({Path(file_path).name})")
                 else:
                     print("[경고] Gemini API Key가 설정되지 않았습니다. 웹 화면 ⚙️ AI 설정에서 키를 등록해 주세요.")
 
@@ -218,7 +260,7 @@ async def main():
     import websockets
     print("=" * 60)
     print("🤖 자재 구매 내역 관리 — 로컬 스캔 헬퍼 백그라운드 서비스")
-    print(f"📌 프린트 서버: {config.get('printerIp')} (박스: {config.get('printerBoxNum')})")
+    print(f"📌 복합기 IP: {config.get('printerIp')} (박스: {config.get('printerBoxNum')})")
     print("📌 웹소켓 서버 포트: ws://localhost:8765")
     print("=" * 60)
 
