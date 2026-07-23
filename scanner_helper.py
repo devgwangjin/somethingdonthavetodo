@@ -277,24 +277,25 @@ async def scan_loop():
             for file_path in new_files:
                 print(f"[감시] 📄 신규 문서 감지: {Path(file_path).name}")
                 
-                # 중복 호출 방지를 위해 발견 즉시 처리 기록
+                api_key = config.get("geminiApiKey")
+                if not api_key:
+                    print(f"[경고] API Key 미등록 상태 ➔ Key 동기화 대기 중... ({Path(file_path).name})")
+                    continue
+
+                # API Key가 정식으로 연결되었을 때만 처리완료 기록
                 processed_files.add(file_path)
                 save_processed_files()
 
-                api_key = config.get("geminiApiKey")
-                if api_key:
-                    print(f"[AI] Gemini AI 분석 진행 중... ({Path(file_path).name})")
-                    result = parse_with_gemini_api(file_path, api_key)
-                    if result:
-                        await broadcast_scan_data(result)
-                        print(f"[성공] 🚀 웹 앱으로 분석 결과 전송 완료!")
-                    else:
-                        print(f"[알림] 분석 실패 또는 취소됨 ({Path(file_path).name})")
+                print(f"[AI] Gemini AI 분석 진행 중... ({Path(file_path).name})")
+                result = parse_with_gemini_api(file_path, api_key)
+                if result:
+                    await broadcast_scan_data(result)
+                    print(f"[성공] 🚀 웹 앱으로 분석 결과 전송 완료!")
                 else:
-                    print("[경고] Gemini API Key가 등록되지 않았습니다. 웹 화면 ⚙️ AI 설정에서 키를 입력해 주세요.")
+                    print(f"[알림] 분석 실패 또는 취소됨 ({Path(file_path).name})")
 
-                # 429 방지: 파일 처리 후 안전 쿨다운 10초 대기
-                await asyncio.sleep(10)
+                # 429 방지: 파일 처리 후 안전 쿨다운 5초 대기
+                await asyncio.sleep(5)
 
         except Exception as e:
             print(f"[루프 에러] {e}")
