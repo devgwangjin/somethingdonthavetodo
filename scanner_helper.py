@@ -173,7 +173,12 @@ def parse_with_gemini_api(file_path, api_key):
                         print(f"[AI] {model_name} 속도 제한(429). 다음 모델로 즉시 스위칭!")
                         continue  # 즉시 다음 모델!
                     elif he.code in [404, 400]:
-                        continue  # 지원 안 되는 모델이면 건너뜀
+                        print(f"[AI] {model_name} 사용 불가({he.code}). 건너뜀.")
+                        # 다음부터 이 모델 시도하지 않도록 제거
+                        if model_name in available_models:
+                            available_models.remove(model_name)
+                            print(f"[AI] 모델 목록 업데이트: {available_models}")
+                        continue
                     else:
                         print(f"[AI] API 에러 ({model_name}): HTTP {he.code} {he.reason}")
                         return None
