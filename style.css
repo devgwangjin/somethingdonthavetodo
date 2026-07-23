@@ -271,16 +271,19 @@ button {
 
 .table-container {
     overflow-x: auto;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
 }
 
 table {
     width: 100%;
     border-collapse: collapse;
     text-align: left;
+    min-width: 850px; /* 테이블 최소 가로 너비 보장 */
 }
 
 th, td {
-    padding: 1rem;
+    padding: 0.9rem 1rem;
     border-bottom: 1px solid var(--border-color);
 }
 
@@ -288,6 +291,49 @@ th {
     background-color: var(--secondary-color);
     color: var(--text-muted);
     font-weight: 600;
+    white-space: nowrap; /* 헤더 글씨 세로 꺾임 원천 방지 */
+}
+
+/* 컬럼별 최적 가로 넓이 및 줄바꿈 세팅 */
+th:nth-child(1), td:nth-child(1) { /* 거래일자 */
+    min-width: 130px;
+    width: 130px;
+    white-space: nowrap;
+    text-align: center;
+    font-weight: 600;
+}
+
+th:nth-child(2), td:nth-child(2) { /* 품목명 */
+    min-width: 200px;
+}
+
+th:nth-child(3), td:nth-child(3) { /* 수량 */
+    min-width: 80px;
+    text-align: right;
+    white-space: nowrap;
+}
+
+th:nth-child(4), td:nth-child(4) { /* 단가 */
+    min-width: 110px;
+    text-align: right;
+    white-space: nowrap;
+}
+
+th:nth-child(5), td:nth-child(5) { /* 총액 */
+    min-width: 120px;
+    text-align: right;
+    white-space: nowrap;
+    font-weight: 600;
+}
+
+th:nth-child(6), td:nth-child(6) { /* 비고 (넓고 시원하게!) */
+    min-width: 240px;
+}
+
+th:nth-child(7), td:nth-child(7) { /* 관리 버튼 */
+    min-width: 110px;
+    text-align: center;
+    white-space: nowrap;
 }
 
 th.sortable {
