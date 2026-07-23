@@ -143,7 +143,11 @@ def parse_with_gemini_api(file_path, api_key):
 
         headers = {"Content-Type": "application/json"}
         data_json = json.dumps(payload).encode("utf-8")
-        models_to_try = list(available_models)  # 복사본 사용
+        
+        if not available_models:
+            available_models = ["gemini-2.0-flash"]
+
+        models_to_try = list(available_models)
 
         # 라운드 최대 2회 (1라운드: 모델 순회, 2라운드: 60초 대기 후 재순회)
         for round_num in range(2):
@@ -159,15 +163,26 @@ def parse_with_gemini_api(file_path, api_key):
                         res_body = resp.read().decode("utf-8")
                         res_json = json.loads(res_body)
 
-                        raw_text = res_json["candidates"][0]["content"]["parts"][0]["text"].strip()
-                        if raw_text.startswith("```json"):
-                            raw_text = raw_text[7:]
-                        if raw_text.startswith("```"):
-                            raw_text = raw_text[3:]
-                        if raw_text.endswith("```"):
-                            raw_text = raw_text[:-3]
+                        candidates = res_json.get("candidates", [])
+                        if not candidates:
+                            print(f"[AI] {model_name} 응답 후보 없음. 건너뜀.")
+                            continue
 
-                        parsed_result = json.loads(raw_text.strip())
+                        parts = candidates[0].get("content", {}).get("parts", [])
+                        if not parts or "text" not in parts[0]:
+                            print(f"[AI] {model_name} 텍스트 파트 없음. 건너뜀.")
+                            continue
+
+                        raw_text = parts[0]["text"].strip()
+                        
+                        # JSON 영역만 정규식으로 안전하게 추출
+                        json_match = re.search(r'\{.*\}', raw_text, re.DOTALL)
+                        if json_match:
+                            clean_json_str = json_match.group(0)
+                        else:
+                            clean_json_str = raw_text
+
+                        parsed_result = json.loads(clean_json_str)
                         print(f"[AI] {model_name} 모델로 {Path(file_path).name} 파싱 성공! ({len(parsed_result.get('items', []))}건 추출됨)")
                         return parsed_result
 
@@ -178,7 +193,7 @@ def parse_with_gemini_api(file_path, api_key):
                     elif he.code in [404, 400]:
                         print(f"[AI] {model_name} 사용 불가({he.code}). 건너뜀.")
                         # 다음부터 이 모델 시도하지 않도록 제거
-                        if model_name in available_models:
+                        if model_name in available_models and len(available_models) > 1:
                             available_models.remove(model_name)
                             print(f"[AI] 모델 목록 업데이트: {available_models}")
                         continue
@@ -226,7 +241,7 @@ def fetch_scans_from_fujifilm_printer():
     return fetched_files
 
 def find_new_scan_files():
-    """복합기 자동 수집 + 감시 폴더 + Downloads 폴더의 모든 신규 문서 파일 감지"""
+    """복합기 자동 수집 + 감시 폴더 + Downloads 폴더의 모든 신규 문서 파일 감지 (대소문자 확장자 지원 및 os.scandir 고속화)"""
     targets = []
     
     # 1. 복합기 다운로드 폴더
@@ -241,13 +256,26 @@ def find_new_scan_files():
     if os.path.exists(user_downloads):
         targets.append(user_downloads)
 
+    valid_exts = ('.pdf', '.jpg', '.jpeg', '.png')
     found_files = []
+    now = time.time()
+
     for folder in targets:
-        for ext in ["*.pdf", "*.jpg", "*.jpeg", "*.png"]:
-            for file_path in glob.glob(os.path.join(folder, ext)):
-                mtime = os.path.getmtime(file_path)
-                if file_path not in processed_files and (time.time() - mtime < 3600):
-                    found_files.append((mtime, file_path))
+        if not os.path.exists(folder):
+            continue
+        try:
+            with os.scandir(folder) as entries:
+                for entry in entries:
+                    if entry.is_file() and entry.name.lower().endswith(valid_exts):
+                        file_path = entry.path
+                        try:
+                            mtime = entry.stat().st_mtime
+                            if file_path not in processed_files and (now - mtime < 3600):
+                                found_files.append((mtime, file_path))
+                        except Exception:
+                            pass
+        except Exception:
+            pass
 
     found_files.sort(key=lambda x: x[0])
     return [f[1] for f in found_files]

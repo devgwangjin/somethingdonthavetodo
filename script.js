@@ -214,7 +214,7 @@ document.addEventListener('DOMContentLoaded', () => {
         let filteredTransactions = transactions.filter(item => {
             if (!searchQuery) return true;
             const keywords = searchQuery.toLowerCase().split(/[\s,]+/).filter(k => k.trim() !== '');
-            const searchableText = (item.date + ' ' + item.name + ' ' + (item.remarks || '') + ' ' + item.price + ' ' + item.qty + ' ' + item.total).toLowerCase();
+            const searchableText = (item.date + ' ' + item.name + ' ' + (item.remarks || '') + ' ' + item.price + ' ' + formatCurrency(item.price) + ' ' + item.qty + ' ' + item.total + ' ' + formatCurrency(item.total)).toLowerCase();
             return keywords.every(keyword => searchableText.includes(keyword));
         });
 
@@ -759,8 +759,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // AI가 분석한 스캔 데이터를 폼에 기입하는 함수
     const fillFormWithAiData = (scanData) => {
-        if (scanData.date && isValidDate(scanData.date)) {
-            transactionDateInput.value = scanData.date;
+        if (scanData.date) {
+            let cleanDate = scanData.date.replace(/[\.\/]/g, '-').trim();
+            if (/^\d{8}$/.test(cleanDate)) {
+                cleanDate = cleanDate.substring(0, 4) + '-' + cleanDate.substring(4, 6) + '-' + cleanDate.substring(6);
+            }
+            if (isValidDate(cleanDate)) {
+                transactionDateInput.value = cleanDate;
+            }
         }
 
         if (Array.isArray(scanData.items) && scanData.items.length > 0) {
