@@ -70,6 +70,22 @@ header p {
     margin-bottom: 1.5rem;
 }
 
+.date-group label {
+    font-weight: 600;
+    font-size: 1.05rem;
+    color: var(--text-main);
+}
+
+.date-group input#transactionDate {
+    width: 220px;
+    font-size: 1.1rem;
+    font-weight: 600;
+    text-align: center;
+    letter-spacing: 1px;
+    border-color: #a371f7;
+    background-color: rgba(163, 113, 247, 0.08);
+}
+
 input[type="date"], input[type="text"], input[type="number"] {
     background-color: var(--input-bg);
     border: 1px solid var(--border-color);
@@ -99,10 +115,11 @@ input:focus {
     margin-bottom: 1.5rem;
 }
 
+/* 품목명(2.2fr) 수량(0.9fr) 단가(1.1fr) 비고(2.5fr - 시원하게 확장!) 총액(1.3fr) 삭제(40px) */
 .items-header {
     display: grid;
-    grid-template-columns: 2fr 1fr 1fr 1.5fr 1fr 40px;
-    gap: 1rem;
+    grid-template-columns: 2.2fr 0.9fr 1.1fr 2.5fr 1.3fr 40px;
+    gap: 0.8rem;
     padding-bottom: 0.5rem;
     border-bottom: 1px solid var(--border-color);
     margin-bottom: 1rem;
@@ -114,8 +131,8 @@ input:focus {
 
 .item-row {
     display: grid;
-    grid-template-columns: 2fr 1fr 1fr 1.5fr 1fr 40px;
-    gap: 1rem;
+    grid-template-columns: 2.2fr 0.9fr 1.1fr 2.5fr 1.3fr 40px;
+    gap: 0.8rem;
     margin-bottom: 0.5rem;
     align-items: center;
     animation: fadeIn 0.3s ease-out;
