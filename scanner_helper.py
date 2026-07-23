@@ -74,13 +74,27 @@ def check_gemini_api_key(api_key):
             res_json = json.loads(res_body)
             all_models = [m["name"].replace("models/", "") for m in res_json.get("models", []) if "generateContent" in m.get("supportedGenerationMethods", [])]
             if all_models:
-                # 우선순위: 무료 한도가 넉넉하고 빠른 모델 순서
-                preferred = ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.5-pro", "gemini-1.5-pro"]
-                selected = [m for m in preferred if m in all_models]
+                print(f"[AI 분석] 구글 계정 지원 전체 모델 목록: {all_models}")
+                # 유효한 모델 키워드 순서 (Flash/Pro/Lite 등 다양한 버전 유연 매칭)
+                target_keywords = [
+                    "gemini-2.0-flash",
+                    "gemini-1.5-flash",
+                    "gemini-2.0-flash-lite",
+                    "gemini-1.5-flash-8b",
+                    "gemini-1.5-pro",
+                    "gemini-2.0-pro"
+                ]
+                selected = []
+                for kw in target_keywords:
+                    for m in all_models:
+                        if kw in m and m not in selected:
+                            selected.append(m)
+                
                 if not selected:
                     selected = all_models[:3]
+                
                 available_models = selected
-                print(f"[AI] API Key 검증 성공! 사용 가능 모델 {len(selected)}개: {selected}")
+                print(f"[AI] API Key 검증 성공! 라운드로빈용 선택 모델 {len(selected)}개: {selected}")
                 print(f"[AI] 429 속도 제한 시 모델 간 자동 스위칭 (라운드로빈 방식)")
                 return True
     except urllib.error.HTTPError as he:
@@ -91,7 +105,7 @@ def check_gemini_api_key(api_key):
     except Exception as e:
         print(f"[AI Key 경고] API Key 검증 중 오류: {e}")
     
-    available_models = ["gemini-2.0-flash"]
+    available_models = ["gemini-2.0-flash", "gemini-1.5-flash"]
     return False
 
 def parse_with_gemini_api(file_path, api_key):
@@ -188,18 +202,23 @@ def parse_with_gemini_api(file_path, api_key):
                         return parsed_result
 
                 except urllib.error.HTTPError as he:
+                    err_body = ""
+                    try:
+                        err_body = he.read().decode("utf-8", errors="ignore")
+                    except Exception:
+                        pass
+
                     if he.code == 429:
-                        print(f"[AI] {model_name} 속도 제한(429). 다음 모델로 즉시 스위칭!")
+                        print(f"[AI 429 상세] {model_name} 속도 제한: {err_body}")
                         continue  # 즉시 다음 모델!
                     elif he.code in [404, 400]:
-                        print(f"[AI] {model_name} 사용 불가({he.code}). 건너뜀.")
-                        # 다음부터 이 모델 시도하지 않도록 제거
+                        print(f"[AI {he.code} 상세] {model_name} 사용 불가: {err_body}")
                         if model_name in available_models and len(available_models) > 1:
                             available_models.remove(model_name)
                             print(f"[AI] 모델 목록 업데이트: {available_models}")
                         continue
                     else:
-                        print(f"[AI] API 에러 ({model_name}): HTTP {he.code} {he.reason}")
+                        print(f"[AI] API 에러 ({model_name}): HTTP {he.code} {he.reason} - {err_body}")
                         return None
                 except Exception as ex:
                     print(f"[AI] 파싱 오류 ({model_name}, {Path(file_path).name}): {ex}")
