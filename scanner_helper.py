@@ -145,10 +145,6 @@ def parse_with_gemini_api(file_path, api_key):
 
     return None
 
-    except Exception as e:
-        print(f"[AI] 파일 읽기 오류 ({Path(file_path).name}): {e}")
-        return None
-
 def fetch_scans_from_fujifilm_printer():
     """후지필름 Apeos C3570 복합기 Web Box (192.168.0.210 / 006) 수집 시도"""
     printer_ip = config.get("printerIp", "192.168.0.210")
