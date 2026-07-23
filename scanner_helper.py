@@ -287,8 +287,16 @@ async def broadcast_scan_data(scan_data):
 
 async def scan_loop():
     print("[헬퍼] 스캔 감시 루프 시작됨...")
+    rate_limit_cooldown = 0  # 429 쿨다운 타이머 (초)
     while True:
         try:
+            # 쿨다운 중이면 대기
+            if rate_limit_cooldown > 0:
+                print(f"[대기] API 한도 리셋 대기 중... {rate_limit_cooldown}초 남음")
+                await asyncio.sleep(min(rate_limit_cooldown, 30))
+                rate_limit_cooldown -= 30
+                continue
+
             new_files = find_new_scan_files()
             for file_path in new_files:
                 print(f"[감시] 감지된 새 문서 파일: {Path(file_path).name}")
@@ -297,10 +305,12 @@ async def scan_loop():
                     print(f"[AI] 라운드로빈 분석 시작... ({Path(file_path).name})")
                     result = parse_with_gemini_api(file_path, api_key)
                     if result == "RATE_LIMITED":
-                        # 429 속도 제한: 이 파일은 processed에 넣지 않아서 다음 루프에서 재시도
-                        print(f"[대기] {Path(file_path).name}은 다음 감시 루프에서 자동 재시도됩니다.")
-                        break  # 나머지 파일도 429일 테니 루프 자체를 중단하고 대기
+                        # 429 전체 실패: 5분(300초) 쿨다운 시작
+                        rate_limit_cooldown = 300
+                        print(f"[대기] 모든 모델 한도 소진. 5분 후 자동 재시도합니다. (화면은 그대로 두세요!)")
+                        break
                     elif result:
+                        rate_limit_cooldown = 0  # 성공하면 쿨다운 리셋
                         await broadcast_scan_data(result)
                         processed_files.add(file_path)
                         save_processed_files()
