@@ -75,14 +75,31 @@ def check_gemini_api_key(api_key):
             # 구글 API가 실제 제공하는 모델명만 수집
             all_models = [m["name"].replace("models/", "") for m in res_json.get("models", []) if "generateContent" in m.get("supportedGenerationMethods", [])]
             
-            # Flash 모델 우선 배치
-            flash_models = [m for m in all_models if "flash" in m]
-            other_models = [m for m in all_models if "flash" not in m]
+            # 무료 한도(15 RPM)가 가장 넉넉한 정식 Flash 모델 우선배치 (2.5 프리뷰는 쿼터가 적어 후순위)
+            preferred_order = [
+                "gemini-1.5-flash",
+                "gemini-1.5-flash-latest",
+                "gemini-1.5-flash-8b",
+                "gemini-2.0-flash",
+                "gemini-2.5-flash",
+                "gemini-1.5-pro",
+                "gemini-2.0-pro"
+            ]
             
-            selected = flash_models + other_models
+            selected = []
+            for pref in preferred_order:
+                for m in all_models:
+                    if pref in m and m not in selected:
+                        selected.append(m)
+            
+            # 남은 모델 추가
+            for m in all_models:
+                if m not in selected:
+                    selected.append(m)
+            
             if selected:
                 available_models = selected[:6]
-                print(f"[AI] API Key 검증 성공! 실제 사용 가능 모델 {len(available_models)}개: {available_models}")
+                print(f"[AI] API Key 검증 성공! 정식 무료 모델 1순위 적용 ({len(available_models)}개): {available_models}")
                 return True
     except urllib.error.HTTPError as he:
         if he.code in [401, 403]:
