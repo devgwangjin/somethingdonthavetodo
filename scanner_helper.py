@@ -175,6 +175,70 @@ def parse_with_gemini_api(file_path, api_key):
 
     return None
 
+def parse_base64_with_gemini_api(base64_data, mime_type, api_key):
+    """웹에서 직접 선택한 PDF/이미지 base64 데이터 파싱"""
+    clean_key = api_key.strip()
+    if not clean_key:
+        return None
+
+    prompt_text = (
+        "이 파일에 1개 이상의 거래명세서 문서/페이지가 들어있을 수 있습니다. "
+        "각 거래명세서 문서마다 'date'(YYYY-MM-DD), 'supplier'(상호/공급자명), 'items'(자재 목록: name, qty, price, total, remarks) 필드를 갖는 "
+        "JSON 객체들의 배열(Array) 포맷으로 추출해줘. 단 1개뿐이어도 길이 1짜리 배열로 응답해. "
+        "응답 예시: [{\"date\": \"2026-07-20\", \"supplier\": \"오포산업\", \"items\": [{\"name\": \"부스바\", \"qty\": 10, \"price\": 5000, \"total\": 50000, \"remarks\": \"\"}]}] "
+        "마크다운 없이 오직 JSON 텍스트만 응답해."
+    )
+
+    payload = {
+        "contents": [
+            {
+                "parts": [
+                    {"inline_data": {"mime_type": mime_type, "data": base64_data}},
+                    {"text": prompt_text}
+                ]
+            }
+        ],
+        "generationConfig": {
+            "response_mime_type": "application/json",
+            "maxOutputTokens": 1024,
+            "temperature": 0.1
+        }
+    }
+
+    headers = {"Content-Type": "application/json"}
+    data_json = json.dumps(payload).encode("utf-8")
+    
+    target_models = [
+        "gemini-3.1-flash-lite",
+        "gemini-3.5-flash-lite",
+        "gemini-2.5-flash-lite",
+        "gemini-1.5-flash-latest"
+    ]
+    
+    for target_model in target_models:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{target_model}:generateContent?key={clean_key}"
+        try:
+            req = urllib.request.Request(url, data=data_json, headers=headers, method="POST")
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                res_body = resp.read().decode("utf-8")
+                res_json = json.loads(res_body)
+
+                candidates = res_json.get("candidates", [])
+                if candidates:
+                    parts = candidates[0].get("content", {}).get("parts", [])
+                    if parts and "text" in parts[0]:
+                        raw_text = parts[0]["text"].strip()
+                        json_match = re.search(r'(\[.*\]|\{.*\})', raw_text, re.DOTALL)
+                        clean_json_str = json_match.group(0) if json_match else raw_text
+                        parsed_result = json.loads(clean_json_str)
+                        print(f"[AI] 🎉 직접 업로드 파일 ({target_model}) 파싱 성공!")
+                        return parsed_result
+        except Exception as ex:
+            print(f"[AI 오류] {target_model} 파싱 예외: {ex}")
+            continue
+
+    return None
+
 # ─── 복합기 및 파일 감지 ───
 def fetch_scans_from_fujifilm_printer():
     """후지필름 Apeos C3570 복합기 Web Box (192.168.0.210 / 006) 수집"""
@@ -294,6 +358,34 @@ async def websocket_handler(websocket):
                         updated_files = find_new_scan_files()
                         up_list = [{"path": f, "name": Path(f).name} for f in updated_files]
                         await broadcast_queue_updated(up_list)
+
+                elif msg_type == "CLEAR_QUEUE":
+                    # 현재 감지된 모든 파일을 처리 완료 목록에 넣어 대기열 비우기
+                    new_files = find_new_scan_files()
+                    for f in new_files:
+                        processed_files.add(f)
+                    save_processed_files()
+                    print(f"[대기열 🧹] 스캔 대기 문서 {len(new_files)}건을 모두 지웠습니다.")
+                    await broadcast_queue_updated([])
+
+                elif msg_type == "DIRECT_PARSE":
+                    base64_data = data.get("base64Data")
+                    mime_type = data.get("mimeType", "application/pdf")
+                    api_key = config.get("geminiApiKey")
+                    if base64_data and api_key:
+                        print(f"[AI 분석 요청] 📁 수동 업로드 파일 분석 진행 중...")
+                        result = parse_base64_with_gemini_api(base64_data, mime_type, api_key)
+                        if result:
+                            if isinstance(result, list):
+                                for idx, doc_data in enumerate(result):
+                                    await broadcast_scan_data(doc_data)
+                                    print(f"[성공] 🚀 수동 업로드 다중 명세서 ({idx+1}/{len(result)}) 폼 기입 완료!")
+                                    await asyncio.sleep(1)
+                            else:
+                                await broadcast_scan_data(result)
+                                print(f"[성공] 🚀 수동 업로드 명세서 폼 기입 완료!")
+                        else:
+                            await websocket.send(json.dumps({"type": "PARSE_ERROR", "message": "AI 파싱 실패"}, ensure_ascii=False))
 
             except Exception as e:
                 print(f"[소켓 오류] {e}")

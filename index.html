@@ -17,7 +17,7 @@
         <main>
             <!-- 스캔 문서 감지 배너 (사용자 선택 파싱) -->
             <div id="scanQueueBanner" class="card scan-queue-banner" style="display: none; background: linear-gradient(135deg, #1e1e2f 0%, #2a2a40 100%); border: 1fr solid #a371f7; margin-bottom: 20px; padding: 16px; border-radius: 12px;">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
                     <div style="display: flex; align-items: center; gap: 10px;">
                         <span style="font-size: 20px;">📄</span>
                         <div>
@@ -25,16 +25,23 @@
                             <p id="scanBannerText" style="font-size: 13px; color: #a0a0b0; margin: 2px 0 0 0;">분석을 원하시면 버튼을 눌러주세요.</p>
                         </div>
                     </div>
-                    <div style="display: flex; gap: 8px;">
+                    <div style="display: flex; gap: 8px; align-items: center;">
                         <select id="scanFileSelect" class="search-input" style="width: auto; font-size: 13px;"></select>
-                        <button type="button" id="triggerAiParseBtn" class="btn-primary" style="background: linear-gradient(135deg, #a371f7 0%, #7928ca 100%); font-size: 13px; padding: 8px 16px;">🤖 선택 문서 AI 분석 및 폼 기입</button>
+                        <button type="button" id="triggerAiParseBtn" class="btn-primary" style="background: linear-gradient(135deg, #a371f7 0%, #7928ca 100%); font-size: 13px; padding: 8px 14px;">🤖 AI 분석 및 폼 기입</button>
+                        <button type="button" id="clearQueueBtn" class="btn-outline" style="border-color: #ff4d4f; color: #ff4d4f; font-size: 13px; padding: 8px 12px;">🧹 대기목록 지우기</button>
                     </div>
                 </div>
             </div>
 
             <!-- 입력 섹션 (영수증 형태) -->
             <section class="card input-section">
-                <h2>새 거래 등록</h2>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                    <h2>새 거래 등록</h2>
+                    <div>
+                        <input type="file" id="directUploadInput" accept=".pdf, .png, .jpg, .jpeg" style="display: none;">
+                        <button type="button" id="triggerDirectUploadBtn" class="btn-outline" style="border-color: #38ef7d; color: #38ef7d; font-size: 13px;">📁 PDF/이미지 명세서 선택 (AI 분석)</button>
+                    </div>
+                </div>
                 <div class="form-group date-group">
                     <label for="transactionDate">거래일자</label>
                     <input type="text" id="transactionDate" placeholder="예: 20260417" maxlength="10" required>

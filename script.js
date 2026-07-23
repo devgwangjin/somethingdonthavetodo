@@ -720,7 +720,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const scanQueueBanner = document.getElementById('scanQueueBanner');
     const scanFileSelect = document.getElementById('scanFileSelect');
     const triggerAiParseBtn = document.getElementById('triggerAiParseBtn');
+    const clearQueueBtn = document.getElementById('clearQueueBtn');
     const scanBannerText = document.getElementById('scanBannerText');
+    const triggerDirectUploadBtn = document.getElementById('triggerDirectUploadBtn');
+    const directUploadInput = document.getElementById('directUploadInput');
 
     if (triggerAiParseBtn) {
         triggerAiParseBtn.addEventListener('click', () => {
@@ -738,6 +741,53 @@ document.addEventListener('DOMContentLoaded', () => {
                 type: 'PARSE_REQUEST',
                 filePath: scanFileSelect.value
             }));
+        });
+    }
+
+    if (clearQueueBtn) {
+        clearQueueBtn.addEventListener('click', () => {
+            if (!confirm('대기 중인 스캔 문서 목록을 모두 지우시겠습니까?')) return;
+            if (window._helperSocket && window._helperSocket.readyState === WebSocket.OPEN) {
+                window._helperSocket.send(JSON.stringify({ type: 'CLEAR_QUEUE' }));
+            }
+            if (scanQueueBanner) scanQueueBanner.style.display = 'none';
+        });
+    }
+
+    if (triggerDirectUploadBtn && directUploadInput) {
+        triggerDirectUploadBtn.addEventListener('click', () => {
+            directUploadInput.click();
+        });
+
+        directUploadInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            if (!window._helperSocket || window._helperSocket.readyState !== WebSocket.OPEN) {
+                alert('🔴 로컬 헬퍼 프로그램이 연결되지 않았습니다. dist/scanner_helper.exe를 실행해 주세요.');
+                return;
+            }
+
+            const reader = new FileReader();
+            triggerDirectUploadBtn.disabled = true;
+            triggerDirectUploadBtn.textContent = '⏳ 파일 AI 분석 중...';
+
+            reader.onload = (evt) => {
+                const dataUrl = evt.target.result;
+                const base64Data = dataUrl.split(',')[1];
+                let mimeType = file.type || 'application/pdf';
+                if (file.name.endsWith('.pdf')) mimeType = 'application/pdf';
+                else if (file.name.endsWith('.png')) mimeType = 'image/png';
+                else if (file.name.endsWith('.jpg') || file.name.endsWith('.jpeg')) mimeType = 'image/jpeg';
+
+                window._helperSocket.send(JSON.stringify({
+                    type: 'DIRECT_PARSE',
+                    base64Data: base64Data,
+                    mimeType: mimeType
+                }));
+            };
+            reader.readAsDataURL(file);
+            directUploadInput.value = '';
         });
     }
 
@@ -800,11 +850,19 @@ document.addEventListener('DOMContentLoaded', () => {
                             triggerAiParseBtn.disabled = false;
                             triggerAiParseBtn.textContent = '🤖 선택 문서 AI 분석 및 폼 기입';
                         }
+                        if (triggerDirectUploadBtn) {
+                            triggerDirectUploadBtn.disabled = false;
+                            triggerDirectUploadBtn.textContent = '📁 PDF/이미지 명세서 선택 (AI 분석)';
+                        }
                         fillFormWithAiData(data);
                     } else if (data.type === 'PARSE_ERROR') {
                         if (triggerAiParseBtn) {
                             triggerAiParseBtn.disabled = false;
                             triggerAiParseBtn.textContent = '🤖 선택 문서 AI 분석 및 폼 기입';
+                        }
+                        if (triggerDirectUploadBtn) {
+                            triggerDirectUploadBtn.disabled = false;
+                            triggerDirectUploadBtn.textContent = '📁 PDF/이미지 명세서 선택 (AI 분석)';
                         }
                         alert(`⚠️ AI 분석 오류: ${data.message || '다시 시도해 주세요.'}`);
                     }
