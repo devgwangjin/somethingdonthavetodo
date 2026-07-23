@@ -230,7 +230,8 @@ def find_new_scan_files():
                         file_path = entry.path
                         try:
                             mtime = entry.stat().st_mtime
-                            if file_path not in processed_files and (now - mtime < 3600):
+                            # 이미 처리된 파일만 제외하고 최근 7일 이내 파일 모두 감지
+                            if file_path not in processed_files and (now - mtime < 86400 * 7):
                                 found_files.append((mtime, file_path))
                         except Exception:
                             pass
