@@ -126,45 +126,14 @@ def parse_with_gemini_api(file_path, api_key):
             print(f"[AI] {Path(file_path).name} 파싱 성공: {len(parsed_result.get('items', []))}건 추출됨")
             return parsed_result
     except Exception as e:
-        print(f"[AI] Gemini API 분석 실패 ({file_path}): {e}")
+        print(f"[AI] Gemini API 분석 실패 ({Path(file_path).name}): {e}")
         return None
 
-def fetch_scans_from_fujifilm_printer():
-    """후지필름 Apeos C3570 복합기 Web Box (192.168.0.210 / 006)에서 직접 최신 스캔 파일 감지 및 수집 시도"""
-    printer_ip = config.get("printerIp", "192.168.0.210")
-    box_num = config.get("printerBoxNum", "006")
-    if not printer_ip:
-        return []
-
-    fetched_files = []
-    try:
-        # 후지필름 Web Box CGI / REST API 호출 테스트
-        cgi_url = f"http://{printer_ip}/cgi-bin/mft/box_doc_list.cgi?box_num={box_num}"
-        req = urllib.request.Request(cgi_url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=3) as resp:
-            if resp.status == 200:
-                html_body = resp.read().decode("utf-8", errors="ignore")
-                # doc_id 패턴 파싱시도
-                doc_ids = re.findall(r'doc_id=["\']?(\w+)', html_body)
-                for doc_id in doc_ids:
-                    get_url = f"http://{printer_ip}/cgi-bin/mft/box_doc_get.cgi?box_num={box_num}&doc_id={doc_id}"
-                    save_file_path = DOWNLOAD_TEMP_DIR / f"scan_box_{doc_id}.pdf"
-                    if str(save_file_path) not in processed_files and not save_file_path.exists():
-                        g_req = urllib.request.Request(get_url, headers={"User-Agent": "Mozilla/5.0"})
-                        with urllib.request.urlopen(g_req, timeout=10) as g_resp:
-                            with open(save_file_path, "wb") as f_out:
-                                f_out.write(g_resp.read())
-                        fetched_files.append(str(save_file_path))
-    except Exception:
-        pass  # 복합기 cgi 연동 시 예외 발생 시 수동 다운로드 감시 폴백으로 유연 작동
-
-    return fetched_files
-
 def find_new_scan_files():
-    """복합기 자동 수집 + 감시 폴더 + 내 Downloads 폴더에서 신규 스캔 파일 감지"""
+    """복합기 자동 수집 + 감시 폴더 + Downloads 폴더의 모든 신규 문서 파일 무조건 감지"""
     targets = []
     
-    # 1. 복합기 자동 다운로드 폴더
+    # 1. 복합기 다운로드 폴더
     targets.append(str(DOWNLOAD_TEMP_DIR))
 
     # 2. 사용자 지정 감시 폴더
@@ -176,20 +145,14 @@ def find_new_scan_files():
     if os.path.exists(user_downloads):
         targets.append(user_downloads)
 
-    # 복합기 웹에서 직접 수집 시도
-    fetch_scans_from_fujifilm_printer()
-
     found_files = []
     for folder in targets:
         for ext in ["*.pdf", "*.jpg", "*.jpeg", "*.png"]:
             for file_path in glob.glob(os.path.join(folder, ext)):
-                file_name = os.path.basename(file_path).lower()
-                # 스캔 파일이거나 다운로드된 최신 문서
-                if ("스캔" in file_name or "scan" in file_name or "doc" in file_name or "img" in file_name or "scan_box" in file_name):
-                    mtime = os.path.getmtime(file_path)
-                    # 최근 1시간 이내에 생성된 파일 중 미처리건 대상
-                    if file_path not in processed_files and (time.time() - mtime < 3600):
-                        found_files.append((mtime, file_path))
+                mtime = os.path.getmtime(file_path)
+                # 최근 1시간(3600초) 내 생성/다운로드된 파일 중 미처리건 무조건 감지 (파일명 제한 제거)
+                if file_path not in processed_files and (time.time() - mtime < 3600):
+                    found_files.append((mtime, file_path))
 
     found_files.sort(key=lambda x: x[0])
     return [f[1] for f in found_files]
@@ -235,7 +198,7 @@ async def scan_loop():
         try:
             new_files = find_new_scan_files()
             for file_path in new_files:
-                print(f"[감시] 감지된 새 스캔 파일: {file_path}")
+                print(f"[감시] 감지된 새 문서 파일: {Path(file_path).name}")
                 api_key = config.get("geminiApiKey")
                 if api_key:
                     print(f"[AI] Gemini AI 분석 진행 중... ({Path(file_path).name})")
@@ -245,6 +208,10 @@ async def scan_loop():
                         processed_files.add(file_path)
                         save_processed_files()
                         print(f"[성공] 웹 앱으로 스캔 데이터 전송 완료! ({Path(file_path).name})")
+                    else:
+                        # 파싱 실패시 재시도 방지를 위해 기록만 추가
+                        processed_files.add(file_path)
+                        save_processed_files()
                 else:
                     print("[경고] Gemini API Key가 설정되지 않았습니다. 웹 화면 ⚙️ AI 설정에서 키를 등록해 주세요.")
 
