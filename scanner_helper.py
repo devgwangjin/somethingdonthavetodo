@@ -64,12 +64,44 @@ def save_processed_files():
         print(f"[기록 오류] processed_files.json 저장 실패: {e}")
 
 # ─── Gemini AI 파싱 엔진 ───
+def clean_and_repair_json(raw_text):
+    """생성 토큰 한도로 인해 끝부분이 약간 잘린 JSON도 안전 복구"""
+    if not raw_text:
+        return None
+    
+    json_match = re.search(r'(\[.*\]|\{.*\})', raw_text, re.DOTALL)
+    clean_str = json_match.group(0) if json_match else raw_text
+    
+    # 1. 시도: 정제된 문장 그대로 parse
+    try:
+        return json.loads(clean_str)
+    except Exception:
+        pass
+        
+    # 2. 잘린 괄호 자동 보정 복구
+    repaired = clean_str.strip()
+    # 닫히지 않은 큰따옴표 보정
+    if repaired.count('"') % 2 != 0:
+        repaired += '"'
+    # 닫히지 않은 객체/배열 보정
+    open_brackets = repaired.count('[') - repaired.count(']')
+    open_braces = repaired.count('{') - repaired.count('}')
+    
+    repaired += '}' * max(0, open_braces)
+    repaired += ']' * max(0, open_brackets)
+    
+    try:
+        return json.loads(repaired)
+    except Exception:
+        # 끝에 잘린 불완전 항목 쉼표 제거 후 보정
+        repaired_sub = re.sub(r',\s*([}\]])', r'\1', repaired)
+        try:
+            return json.loads(repaired_sub)
+        except Exception:
+            return None
+
 def parse_with_gemini_api(file_path, api_key):
-    """
-    Gemini 2.0 Flash 최적화 파싱 엔진
-    - 토큰 소진 최소화 (maxOutputTokens 제한)
-    - 429 에러 발생 시 구글 지침 시간만큼 정밀 대기 후 1회 안전 재시도
-    """
+    """Gemini API를 사용하여 스캔 파일에서 거래명세서 정보 파싱"""
     clean_key = api_key.strip()
     if not clean_key:
         print("[AI] Gemini API Key가 설정되지 않았습니다.")
@@ -107,7 +139,7 @@ def parse_with_gemini_api(file_path, api_key):
             ],
             "generationConfig": {
                 "response_mime_type": "application/json",
-                "maxOutputTokens": 1024,
+                "maxOutputTokens": 4096,
                 "temperature": 0.1
             }
         }
@@ -115,12 +147,12 @@ def parse_with_gemini_api(file_path, api_key):
         headers = {"Content-Type": "application/json"}
         data_json = json.dumps(payload).encode("utf-8")
         
-        # 사용자 계정 쿼터표 분석 기반 최적화 (하루 500회, 분당 15회 넉넉한 쿼터 보유 모델 1순위)
+        # 정식 구글 API 엔드포인트 지원 모델 라이브러리
         target_models = [
             "gemini-3.1-flash-lite",
             "gemini-3.5-flash-lite",
-            "gemini-2.5-flash-lite",
-            "gemini-1.5-flash-latest",
+            "gemini-2.5-flash",
+            "gemini-2.0-flash",
             "gemini-1.5-flash"
         ]
         
@@ -130,7 +162,7 @@ def parse_with_gemini_api(file_path, api_key):
             for attempt in range(2):
                 try:
                     req = urllib.request.Request(url, data=data_json, headers=headers, method="POST")
-                    with urllib.request.urlopen(req, timeout=30) as resp:
+                    with urllib.request.urlopen(req, timeout=35) as resp:
                         res_body = resp.read().decode("utf-8")
                         res_json = json.loads(res_body)
 
@@ -139,11 +171,10 @@ def parse_with_gemini_api(file_path, api_key):
                             parts = candidates[0].get("content", {}).get("parts", [])
                             if parts and "text" in parts[0]:
                                 raw_text = parts[0]["text"].strip()
-                                json_match = re.search(r'(\[.*\]|\{.*\})', raw_text, re.DOTALL)
-                                clean_json_str = json_match.group(0) if json_match else raw_text
-                                parsed_result = json.loads(clean_json_str)
-                                print(f"[AI] 🎉 {target_model} 파싱 성공! ({Path(file_path).name})")
-                                return parsed_result
+                                parsed_result = clean_and_repair_json(raw_text)
+                                if parsed_result:
+                                    print(f"[AI] 🎉 {target_model} 파싱 성공! ({Path(file_path).name})")
+                                    return parsed_result
 
                 except urllib.error.HTTPError as he:
                     err_body = ""
@@ -200,7 +231,7 @@ def parse_base64_with_gemini_api(base64_data, mime_type, api_key):
         ],
         "generationConfig": {
             "response_mime_type": "application/json",
-            "maxOutputTokens": 1024,
+            "maxOutputTokens": 4096,
             "temperature": 0.1
         }
     }
@@ -211,15 +242,16 @@ def parse_base64_with_gemini_api(base64_data, mime_type, api_key):
     target_models = [
         "gemini-3.1-flash-lite",
         "gemini-3.5-flash-lite",
-        "gemini-2.5-flash-lite",
-        "gemini-1.5-flash-latest"
+        "gemini-2.5-flash",
+        "gemini-2.0-flash",
+        "gemini-1.5-flash"
     ]
     
     for target_model in target_models:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{target_model}:generateContent?key={clean_key}"
         try:
             req = urllib.request.Request(url, data=data_json, headers=headers, method="POST")
-            with urllib.request.urlopen(req, timeout=30) as resp:
+            with urllib.request.urlopen(req, timeout=35) as resp:
                 res_body = resp.read().decode("utf-8")
                 res_json = json.loads(res_body)
 
@@ -228,11 +260,10 @@ def parse_base64_with_gemini_api(base64_data, mime_type, api_key):
                     parts = candidates[0].get("content", {}).get("parts", [])
                     if parts and "text" in parts[0]:
                         raw_text = parts[0]["text"].strip()
-                        json_match = re.search(r'(\[.*\]|\{.*\})', raw_text, re.DOTALL)
-                        clean_json_str = json_match.group(0) if json_match else raw_text
-                        parsed_result = json.loads(clean_json_str)
-                        print(f"[AI] 🎉 직접 업로드 파일 ({target_model}) 파싱 성공!")
-                        return parsed_result
+                        parsed_result = clean_and_repair_json(raw_text)
+                        if parsed_result:
+                            print(f"[AI] 🎉 직접 업로드 파일 ({target_model}) 파싱 성공!")
+                            return parsed_result
         except Exception as ex:
             print(f"[AI 오류] {target_model} 파싱 예외: {ex}")
             continue
