@@ -96,6 +96,7 @@ def check_gemini_api_key(api_key):
 
 def parse_with_gemini_api(file_path, api_key):
     """Google Gemini 라운드로빈 분석: 429 시 즉시 다른 모델로 스위칭, 전부 429면 60초 대기 후 재시도"""
+    global available_models
     clean_key = api_key.strip()
     if not clean_key:
         print("[AI] Gemini API Key가 설정되지 않았습니다.")
