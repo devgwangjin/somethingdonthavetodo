@@ -74,27 +74,23 @@ def check_gemini_api_key(api_key):
             res_json = json.loads(res_body)
             all_models = [m["name"].replace("models/", "") for m in res_json.get("models", []) if "generateContent" in m.get("supportedGenerationMethods", [])]
             if all_models:
-                print(f"[AI 분석] 구글 계정 지원 전체 모델 목록: {all_models}")
-                # 유효한 모델 키워드 순서 (Flash/Pro/Lite 등 다양한 버전 유연 매칭)
-                target_keywords = [
-                    "gemini-2.0-flash",
-                    "gemini-1.5-flash",
-                    "gemini-2.0-flash-lite",
-                    "gemini-1.5-flash-8b",
-                    "gemini-1.5-pro",
-                    "gemini-2.0-pro"
-                ]
+                # 1. 무료 한도(15 RPM)가 가장 확실한 1.5-flash 최우선 선택!
                 selected = []
-                for kw in target_keywords:
-                    for m in all_models:
-                        if kw in m and m not in selected:
-                            selected.append(m)
+                for m in all_models:
+                    if "1.5-flash" in m and m not in selected:
+                        selected.append(m)
+                for m in all_models:
+                    if "1.5-pro" in m and m not in selected:
+                        selected.append(m)
+                for m in all_models:
+                    if ("2.0-flash" in m or "2.0-pro" in m) and m not in selected:
+                        selected.append(m)
                 
                 if not selected:
                     selected = all_models[:3]
                 
                 available_models = selected
-                print(f"[AI] API Key 검증 성공! 라운드로빈용 선택 모델 {len(selected)}개: {selected}")
+                print(f"[AI] API Key 검증 성공! 우선순위 적용 모델 {len(selected)}개: {selected}")
                 print(f"[AI] 429 속도 제한 시 모델 간 자동 스위칭 (라운드로빈 방식)")
                 return True
     except urllib.error.HTTPError as he:
@@ -105,7 +101,7 @@ def check_gemini_api_key(api_key):
     except Exception as e:
         print(f"[AI Key 경고] API Key 검증 중 오류: {e}")
     
-    available_models = ["gemini-2.0-flash", "gemini-1.5-flash"]
+    available_models = ["gemini-1.5-flash", "gemini-2.0-flash"]
     return False
 
 def parse_with_gemini_api(file_path, api_key):
@@ -209,16 +205,21 @@ def parse_with_gemini_api(file_path, api_key):
                         pass
 
                     if he.code == 429:
-                        print(f"[AI 429 상세] {model_name} 속도 제한: {err_body}")
+                        # 긴 JSON 대신 1줄 간결 메시지
+                        retry_msg = "잠시 후 리셋"
+                        if "retryDelay" in err_body:
+                            match = re.search(r'retryDelay["\']?:\s*["\']?(\d+s|\d+\.\d+s)', err_body)
+                            if match:
+                                retry_msg = f"{match.group(1)} 후 리셋"
+                        print(f"[AI] {model_name} 한도 초과 ({retry_msg}) ➔ 다음 모델로 즉시 스위칭!")
                         continue  # 즉시 다음 모델!
                     elif he.code in [404, 400]:
-                        print(f"[AI {he.code} 상세] {model_name} 사용 불가: {err_body}")
+                        print(f"[AI] {model_name} 미지원 모델({he.code}) ➔ 목록에서 제거됨.")
                         if model_name in available_models and len(available_models) > 1:
                             available_models.remove(model_name)
-                            print(f"[AI] 모델 목록 업데이트: {available_models}")
                         continue
                     else:
-                        print(f"[AI] API 에러 ({model_name}): HTTP {he.code} {he.reason} - {err_body}")
+                        print(f"[AI] API 에러 ({model_name}): HTTP {he.code} {he.reason}")
                         return None
                 except Exception as ex:
                     print(f"[AI] 파싱 오류 ({model_name}, {Path(file_path).name}): {ex}")
