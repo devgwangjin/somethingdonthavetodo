@@ -113,52 +113,52 @@ def parse_with_gemini_api(file_path, api_key):
         headers = {"Content-Type": "application/json"}
         data_json = json.dumps(payload).encode("utf-8")
         
-        # 정식 지원 모델 gemini-2.0-flash 사용
-        target_model = "gemini-2.0-flash"
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{target_model}:generateContent?key={clean_key}"
+        # 무료 쿼터 소비가 가장 적고 빠른 초경량 모델 순차 시도
+        target_models = ["gemini-2.0-flash-lite", "gemini-1.5-flash-8b", "gemini-2.0-flash"]
         
-        for attempt in range(2):
-            try:
-                req = urllib.request.Request(url, data=data_json, headers=headers, method="POST")
-                with urllib.request.urlopen(req, timeout=30) as resp:
-                    res_body = resp.read().decode("utf-8")
-                    res_json = json.loads(res_body)
-
-                    candidates = res_json.get("candidates", [])
-                    if candidates:
-                        parts = candidates[0].get("content", {}).get("parts", [])
-                        if parts and "text" in parts[0]:
-                            raw_text = parts[0]["text"].strip()
-                            json_match = re.search(r'\{.*\}', raw_text, re.DOTALL)
-                            clean_json_str = json_match.group(0) if json_match else raw_text
-                            parsed_result = json.loads(clean_json_str)
-                            print(f"[AI] 🎉 {Path(file_path).name} 파싱 성공! ({len(parsed_result.get('items', []))}개 항목)")
-                            return parsed_result
-
-            except urllib.error.HTTPError as he:
-                err_body = ""
+        for target_model in target_models:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{target_model}:generateContent?key={clean_key}"
+            
+            for attempt in range(2):
                 try:
-                    err_body = he.read().decode("utf-8", errors="ignore")
-                except Exception:
-                    pass
+                    req = urllib.request.Request(url, data=data_json, headers=headers, method="POST")
+                    with urllib.request.urlopen(req, timeout=30) as resp:
+                        res_body = resp.read().decode("utf-8")
+                        res_json = json.loads(res_body)
 
-                if he.code == 429 and attempt == 0:
-                    wait_sec = 60
-                    match = re.search(r'retryDelay["\']?:\s*["\']?(\d+(\.\d+)?)s', err_body)
-                    if match:
-                        try:
-                            wait_sec = int(float(match.group(1))) + 2
-                        except Exception:
-                            pass
-                    print(f"[AI 429] ⏳ 구글 API 한도 대기: {wait_sec}초 후 자동 재시도합니다...")
-                    time.sleep(wait_sec)
-                    continue
-                else:
-                    print(f"[AI] {target_model} 에러 (HTTP {he.code}): {he.reason}")
+                        candidates = res_json.get("candidates", [])
+                        if candidates:
+                            parts = candidates[0].get("content", {}).get("parts", [])
+                            if parts and "text" in parts[0]:
+                                raw_text = parts[0]["text"].strip()
+                                json_match = re.search(r'\{.*\}', raw_text, re.DOTALL)
+                                clean_json_str = json_match.group(0) if json_match else raw_text
+                                parsed_result = json.loads(clean_json_str)
+                                print(f"[AI] 🎉 {target_model} 모델 파싱 성공! ({Path(file_path).name})")
+                                return parsed_result
+
+                except urllib.error.HTTPError as he:
+                    err_body = ""
+                    try:
+                        err_body = he.read().decode("utf-8", errors="ignore")
+                    except Exception:
+                        pass
+
+                    if he.code == 429 and attempt == 0:
+                        wait_sec = 10
+                        match = re.search(r'retryDelay["\']?:\s*["\']?(\d+(\.\d+)?)s', err_body)
+                        if match:
+                            try:
+                                wait_sec = int(float(match.group(1))) + 1
+                            except Exception:
+                                pass
+                        print(f"[AI 429] ⏳ {target_model} 한도 대기 ({wait_sec}초)...")
+                        time.sleep(wait_sec)
+                        continue
+                    else:
+                        break
+                except Exception:
                     break
-            except Exception as ex:
-                print(f"[AI] 파싱 처리 오류 ({Path(file_path).name}): {ex}")
-                break
 
     except Exception as ex_all:
         print(f"[AI] 파일 읽기 실패 ({Path(file_path).name}): {ex_all}")
