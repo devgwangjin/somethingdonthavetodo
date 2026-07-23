@@ -73,31 +73,20 @@ def check_gemini_api_key(api_key):
             res_body = resp.read().decode("utf-8")
             res_json = json.loads(res_body)
             all_models = [m["name"].replace("models/", "") for m in res_json.get("models", []) if "generateContent" in m.get("supportedGenerationMethods", [])]
-            if all_models:
-                # 1. 무료 한도(15 RPM)가 가장 확실한 1.5-flash 최우선 선택!
-                selected = []
-                for m in all_models:
-                    if "1.5-flash" in m and m not in selected:
-                        selected.append(m)
-                for m in all_models:
-                    if "1.5-pro" in m and m not in selected:
-                        selected.append(m)
-                for m in all_models:
-                    if ("2.0-flash" in m or "2.0-pro" in m) and m not in selected:
-                        selected.append(m)
-                
-                if not selected:
-                    selected = all_models[:3]
-                
-                available_models = selected
-                print(f"[AI] API Key 검증 성공! 우선순위 적용 모델 {len(selected)}개: {selected}")
-                print(f"[AI] 429 속도 제한 시 모델 간 자동 스위칭 (라운드로빈 방식)")
-                return True
+            
+            selected = ["gemini-1.5-flash"]
+            for m in all_models:
+                if m not in selected and ("flash" in m or "pro" in m):
+                    selected.append(m)
+            
+            available_models = selected[:5]
+            print(f"[AI] API Key 검증 성공! 모델 목록 ({len(available_models)}개): {available_models}")
+            return True
     except urllib.error.HTTPError as he:
         if he.code in [401, 403]:
             print(f"[AI Key 경고] 구글 API Key 인증 실패 (HTTP {he.code}). 키를 다시 확인해 주세요.")
         else:
-            print(f"[AI Key 알림] 구글 AI 서버 일시적 응답 지연 (HTTP {he.code}). 잠시 후 자동 재시도됩니다.")
+            print(f"[AI Key 알림] 구글 AI 서버 일시적 응답 지연 (HTTP {he.code}).")
     except Exception as e:
         print(f"[AI Key 경고] API Key 검증 중 오류: {e}")
     
