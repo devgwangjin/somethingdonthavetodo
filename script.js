@@ -648,6 +648,149 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // ─── AI 설정 모달 & 스캔 헬퍼 웹소켓 연동 ───
+    const aiSettingsBtn = document.getElementById('aiSettingsBtn');
+    const aiSettingsModal = document.getElementById('aiSettingsModal');
+    const closeAiModalBtn = document.getElementById('closeAiModalBtn');
+    const saveAiSettingsBtn = document.getElementById('saveAiSettingsBtn');
+    const geminiApiKeyInput = document.getElementById('geminiApiKeyInput');
+    const toggleApiKeyVisibilityBtn = document.getElementById('toggleApiKeyVisibilityBtn');
+    const printerIpInput = document.getElementById('printerIpInput');
+    const printerBoxNumInput = document.getElementById('printerBoxNumInput');
+    const helperStatusBadge = document.getElementById('helperStatusBadge');
+
+    // 모달 설정값 불러오기
+    const loadAiSettings = () => {
+        if (geminiApiKeyInput) geminiApiKeyInput.value = localStorage.getItem('geminiApiKey') || '';
+        if (printerIpInput) printerIpInput.value = localStorage.getItem('printerIp') || '192.168.0.210';
+        if (printerBoxNumInput) printerBoxNumInput.value = localStorage.getItem('printerBoxNum') || '006';
+    };
+    loadAiSettings();
+
+    if (aiSettingsBtn && aiSettingsModal) {
+        aiSettingsBtn.addEventListener('click', () => {
+            loadAiSettings();
+            aiSettingsModal.style.display = 'flex';
+        });
+
+        closeAiModalBtn.addEventListener('click', () => {
+            aiSettingsModal.style.display = 'none';
+        });
+
+        aiSettingsModal.addEventListener('click', (e) => {
+            if (e.target === aiSettingsModal) {
+                aiSettingsModal.style.display = 'none';
+            }
+        });
+
+        toggleApiKeyVisibilityBtn.addEventListener('click', () => {
+            if (geminiApiKeyInput.type === 'password') {
+                geminiApiKeyInput.type = 'text';
+                toggleApiKeyVisibilityBtn.textContent = '숨기기';
+            } else {
+                geminiApiKeyInput.type = 'password';
+                toggleApiKeyVisibilityBtn.textContent = '표시';
+            }
+        });
+
+        saveAiSettingsBtn.addEventListener('click', () => {
+            localStorage.setItem('geminiApiKey', geminiApiKeyInput.value.trim());
+            localStorage.setItem('printerIp', printerIpInput.value.trim());
+            localStorage.setItem('printerBoxNum', printerBoxNumInput.value.trim());
+            alert('🤖 AI 설정이 성공적으로 저장되었습니다!');
+            aiSettingsModal.style.display = 'none';
+            connectToHelper();
+        });
+    }
+
+    // 로컬 헬퍼 프로그램 웹소켓 연동 (ws://localhost:8765)
+    let helperSocket = null;
+    const connectToHelper = () => {
+        if (helperSocket) {
+            try { helperSocket.close(); } catch(e){}
+        }
+
+        try {
+            helperSocket = new WebSocket('ws://localhost:8765');
+
+            helperSocket.onopen = () => {
+                if (helperStatusBadge) {
+                    helperStatusBadge.textContent = '🟢 헬퍼 연동됨';
+                    helperStatusBadge.className = 'status-badge status-on';
+                }
+                const configMsg = {
+                    type: 'CONFIG_SYNC',
+                    apiKey: localStorage.getItem('geminiApiKey') || '',
+                    printerIp: localStorage.getItem('printerIp') || '192.168.0.210',
+                    printerBoxNum: localStorage.getItem('printerBoxNum') || '006'
+                };
+                helperSocket.send(JSON.stringify(configMsg));
+            };
+
+            helperSocket.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'SCAN_PARSED') {
+                        fillFormWithAiData(data);
+                    }
+                } catch (e) {
+                    console.error('웹소켓 데이터 파싱 에러:', e);
+                }
+            };
+
+            helperSocket.onclose = () => {
+                if (helperStatusBadge) {
+                    helperStatusBadge.textContent = '🔴 헬퍼 미연동';
+                    helperStatusBadge.className = 'status-badge status-off';
+                }
+                setTimeout(connectToHelper, 5000);
+            };
+
+            helperSocket.onerror = () => {
+                if (helperStatusBadge) {
+                    helperStatusBadge.textContent = '🔴 헬퍼 미연동';
+                    helperStatusBadge.className = 'status-badge status-off';
+                }
+            };
+        } catch (err) {
+            console.log('헬퍼 연결 안됨');
+        }
+    };
+
+    // AI가 분석한 스캔 데이터를 폼에 기입하는 함수
+    const fillFormWithAiData = (scanData) => {
+        if (scanData.date && isValidDate(scanData.date)) {
+            transactionDateInput.value = scanData.date;
+        }
+
+        if (Array.isArray(scanData.items) && scanData.items.length > 0) {
+            itemsContainer.innerHTML = '';
+
+            scanData.items.forEach(item => {
+                addItemRow();
+                const lastRow = itemsContainer.lastElementChild;
+                if (!lastRow) return;
+
+                const nameInput = lastRow.querySelector('.item-name');
+                const qtyInput = lastRow.querySelector('.item-qty');
+                const priceInput = lastRow.querySelector('.item-price');
+                const totalInput = lastRow.querySelector('.item-total');
+                const remarksInput = lastRow.querySelector('.item-remarks');
+
+                if (nameInput) nameInput.value = item.name || '';
+                if (qtyInput) qtyInput.value = item.qty || '';
+                if (priceInput) priceInput.value = item.price || '';
+                if (totalInput) totalInput.value = item.total || (item.qty && item.price ? item.qty * item.price : '');
+                if (remarksInput && item.remarks) remarksInput.value = item.remarks;
+            });
+
+            calculateGrandTotal();
+            alert(`🤖 AI가 스캔된 거래명세서(${scanData.items.length}건)를 읽어 입력했습니다!\n내용을 확인하신 후 [저장하기]를 눌러주세요.`);
+        }
+    };
+
+    connectToHelper();
+
     // ─── 초기화 ───
     renderTable();
 });

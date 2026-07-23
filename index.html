@@ -57,6 +57,7 @@
                     <div class="header-actions">
                         <input type="file" id="importCsvInput" accept=".csv" style="display: none;">
                         <button type="button" id="undoImportBtn" class="btn-outline" style="display: none; color: var(--danger-color); border-color: var(--danger-color);">↩️ 직전 복원 취소</button>
+                        <button type="button" id="aiSettingsBtn" class="btn-outline" style="border-color: #a371f7; color: #a371f7;">🤖 AI 스캔 설정</button>
                         <button type="button" id="importCsvBtn" class="btn-outline">📤 CSV 복원</button>
                         <button type="button" id="exportCsvBtn" class="btn-outline">📥 CSV 백업</button>
                     </div>
@@ -98,6 +99,41 @@
             <button type="button" class="btn-delete" title="삭제">✕</button>
         </div>
     </template>
+
+    <!-- AI 스캔 설정 모달 -->
+    <div id="aiSettingsModal" class="modal-backdrop" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>🤖 AI 거래명세서 자동 인식 설정</h3>
+                <button type="button" id="closeAiModalBtn" class="modal-close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="modal-form-group">
+                    <label for="geminiApiKeyInput">Google Gemini API Key</label>
+                    <div class="input-with-btn">
+                        <input type="password" id="geminiApiKeyInput" placeholder="AIzaSy...">
+                        <button type="button" id="toggleApiKeyVisibilityBtn" class="btn-secondary">표시</button>
+                    </div>
+                    <small class="help-text">Google AI Studio에서 발급받은 무료 API 키를 입력하세요.</small>
+                </div>
+                <div class="modal-form-group">
+                    <label for="printerIpInput">복합기 IP 주소</label>
+                    <input type="text" id="printerIpInput" value="192.168.0.210">
+                </div>
+                <div class="modal-form-group">
+                    <label for="printerBoxNumInput">복합기 박스 번호 (폴더)</label>
+                    <input type="text" id="printerBoxNumInput" value="006">
+                </div>
+                <div class="modal-form-group helper-status-group">
+                    <span>스캔 헬퍼 프로그램 연동 상태:</span>
+                    <span id="helperStatusBadge" class="status-badge status-off">🔴 헬퍼 미연동</span>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" id="saveAiSettingsBtn" class="btn-primary">설정 저장하기</button>
+            </div>
+        </div>
+    </div>
 
     <script src="script.js"></script>
 </body>
