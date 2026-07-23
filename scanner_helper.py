@@ -118,30 +118,44 @@ def parse_with_gemini_api(file_path, api_key):
         headers = {"Content-Type": "application/json"}
         data_json = json.dumps(payload).encode("utf-8")
         
-        # 가장 무료 한도가 넉넉하고 빠른 정식 1.5-flash 모델로 딱 1번만 시도!
-        target_model = "gemini-1.5-flash"
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{target_model}:generateContent?key={clean_key}"
+        # 구글 계정에 실제 존재하는 정식 엔드포인트 gemini-2.0-flash 사용
+        target_models = ["gemini-2.0-flash", "gemini-2.0-flash-lite"]
         
-        req = urllib.request.Request(url, data=data_json, headers=headers, method="POST")
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            res_body = resp.read().decode("utf-8")
-            res_json = json.loads(res_body)
+        for target_model in target_models:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{target_model}:generateContent?key={clean_key}"
+            
+            for attempt in range(2):
+                try:
+                    req = urllib.request.Request(url, data=data_json, headers=headers, method="POST")
+                    with urllib.request.urlopen(req, timeout=30) as resp:
+                        res_body = resp.read().decode("utf-8")
+                        res_json = json.loads(res_body)
 
-            candidates = res_json.get("candidates", [])
-            if candidates:
-                parts = candidates[0].get("content", {}).get("parts", [])
-                if parts and "text" in parts[0]:
-                    raw_text = parts[0]["text"].strip()
-                    json_match = re.search(r'\{.*\}', raw_text, re.DOTALL)
-                    clean_json_str = json_match.group(0) if json_match else raw_text
-                    parsed_result = json.loads(clean_json_str)
-                    print(f"[AI] 🎉 {target_model} 파싱 100% 성공! ({Path(file_path).name})")
-                    return parsed_result
+                        candidates = res_json.get("candidates", [])
+                        if candidates:
+                            parts = candidates[0].get("content", {}).get("parts", [])
+                            if parts and "text" in parts[0]:
+                                raw_text = parts[0]["text"].strip()
+                                json_match = re.search(r'\{.*\}', raw_text, re.DOTALL)
+                                clean_json_str = json_match.group(0) if json_match else raw_text
+                                parsed_result = json.loads(clean_json_str)
+                                print(f"[AI] 🎉 {target_model} 파싱 100% 성공! ({Path(file_path).name})")
+                                return parsed_result
 
-    except urllib.error.HTTPError as he:
-        print(f"[AI] HTTP Error {he.code}: {he.reason}")
-    except Exception as ex:
-        print(f"[AI] 파싱 중 에러 발생 ({Path(file_path).name}): {ex}")
+                except urllib.error.HTTPError as he:
+                    if he.code == 429 and attempt == 0:
+                        print(f"[AI 429] {target_model} 한도 대기 ➔ 10초 대기 후 자동 재시도합니다...")
+                        time.sleep(10)
+                        continue
+                    else:
+                        print(f"[AI] {target_model} HTTP Error {he.code}: {he.reason}")
+                        break
+                except Exception as ex:
+                    print(f"[AI] {target_model} 파싱 중 에러 발생 ({Path(file_path).name}): {ex}")
+                    break
+
+    except Exception as ex_all:
+        print(f"[AI] 전체 처리 에러: {ex_all}")
 
     return None
 
