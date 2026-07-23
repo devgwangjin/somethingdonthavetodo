@@ -93,7 +93,7 @@ def check_gemini_api_key(api_key):
     return False
 
 def parse_with_gemini_api(file_path, api_key):
-    """Google Gemini 단일 지정 모델 분석"""
+    """Google Gemini 단일 지정 모델 분석 (429 발생 시 60초 대기 후 최대 3회 재시도)"""
     global active_model
     clean_key = api_key.strip()
     if not clean_key:
@@ -140,34 +140,51 @@ def parse_with_gemini_api(file_path, api_key):
             }
         }
 
-        # 자동 매핑된 최적 모델 1개로 단 1번만 호출!
         target_model = active_model if active_model else "gemini-2.0-flash"
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{target_model}:generateContent?key={clean_key}"
         headers = {"Content-Type": "application/json"}
         data_json = json.dumps(payload).encode("utf-8")
 
-        req = urllib.request.Request(url, data=data_json, headers=headers, method="POST")
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            res_body = resp.read().decode("utf-8")
-            res_json = json.loads(res_body)
+        # 429 발생 시 60초 대기 후 최대 3회까지만 재시도
+        max_retries = 3
+        for attempt in range(max_retries):
+            req = urllib.request.Request(url, data=data_json, headers=headers, method="POST")
+            try:
+                with urllib.request.urlopen(req, timeout=60) as resp:
+                    res_body = resp.read().decode("utf-8")
+                    res_json = json.loads(res_body)
 
-            raw_text = res_json["candidates"][0]["content"]["parts"][0]["text"].strip()
-            if raw_text.startswith("```json"):
-                raw_text = raw_text[7:]
-            if raw_text.startswith("```"):
-                raw_text = raw_text[3:]
-            if raw_text.endswith("```"):
-                raw_text = raw_text[:-3]
+                    raw_text = res_json["candidates"][0]["content"]["parts"][0]["text"].strip()
+                    if raw_text.startswith("```json"):
+                        raw_text = raw_text[7:]
+                    if raw_text.startswith("```"):
+                        raw_text = raw_text[3:]
+                    if raw_text.endswith("```"):
+                        raw_text = raw_text[:-3]
 
-            parsed_result = json.loads(raw_text.strip())
-            print(f"[AI] {target_model} 모델로 {Path(file_path).name} 파싱 100% 성공! ({len(parsed_result.get('items', []))}건 추출됨)")
-            return parsed_result
+                    parsed_result = json.loads(raw_text.strip())
+                    print(f"[AI] {target_model} 모델로 {Path(file_path).name} 파싱 100% 성공! ({len(parsed_result.get('items', []))}건 추출됨)")
+                    return parsed_result
 
-    except urllib.error.HTTPError as he:
-        print(f"[AI] API 응답 에러 ({active_model}): HTTP {he.code} {he.reason}")
-        return None
-    except Exception as ex:
-        print(f"[AI] 파싱 중 오류 발생 ({Path(file_path).name}): {ex}")
+            except urllib.error.HTTPError as he:
+                if he.code == 429:
+                    if attempt < max_retries - 1:
+                        wait_sec = 60 * (attempt + 1)  # 60초, 120초, ...
+                        print(f"[AI] 속도 제한(429) 감지. {wait_sec}초 대기 후 재시도합니다... (시도 {attempt+1}/{max_retries})")
+                        time.sleep(wait_sec)
+                        continue
+                    else:
+                        print(f"[AI] 속도 제한(429) {max_retries}회 초과. 나중에 다시 시도합니다.")
+                        return "RATE_LIMITED"  # 특수 값: 429 실패 구분용
+                else:
+                    print(f"[AI] API 응답 에러 ({target_model}): HTTP {he.code} {he.reason}")
+                    return None
+            except Exception as ex:
+                print(f"[AI] 파싱 중 오류 발생 ({Path(file_path).name}): {ex}")
+                return None
+
+    except Exception as e:
+        print(f"[AI] 파일 읽기 오류 ({Path(file_path).name}): {e}")
         return None
 
 def fetch_scans_from_fujifilm_printer():
@@ -273,7 +290,11 @@ async def scan_loop():
                 if api_key:
                     print(f"[AI] {active_model} AI 분석 시작... ({Path(file_path).name})")
                     result = parse_with_gemini_api(file_path, api_key)
-                    if result:
+                    if result == "RATE_LIMITED":
+                        # 429 속도 제한: 이 파일은 processed에 넣지 않아서 다음 루프에서 재시도
+                        print(f"[대기] {Path(file_path).name}은 다음 감시 루프에서 자동 재시도됩니다.")
+                        break  # 나머지 파일도 429일 테니 루프 자체를 중단하고 대기
+                    elif result:
                         await broadcast_scan_data(result)
                         processed_files.add(file_path)
                         save_processed_files()
@@ -285,8 +306,8 @@ async def scan_loop():
                 else:
                     print("[경고] Gemini API Key가 설정되지 않았습니다. 웹 화면 ⚙️ AI 설정에서 키를 등록해 주세요.")
 
-                # 속도 제한 방지용 딜레이
-                await asyncio.sleep(2)
+                # 파일 간 5초 딜레이 (속도 제한 방지)
+                await asyncio.sleep(5)
 
         except Exception as e:
             print(f"[루프] 오류 발생: {e}")
