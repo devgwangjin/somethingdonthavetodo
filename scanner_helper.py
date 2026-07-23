@@ -26,6 +26,7 @@ config = {
 }
 processed_files = set()
 connected_websockets = set()
+active_model = "gemini-2.0-flash"
 
 def load_config():
     global config
@@ -60,22 +61,40 @@ def save_processed_files():
         print(f"[기록] processed_files.json 저장 실패: {e}")
 
 def check_gemini_api_key(api_key):
-    """Google Gemini API Key 검증"""
+    """Google Gemini API Key 검증 및 해당 키가 지원하는 최적 모델 자동 감지"""
+    global active_model
     clean_key = api_key.strip()
     if not clean_key:
         return False
     try:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash?key={clean_key}"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models?key={clean_key}"
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        # 간단 요청 테스트
-        print("[AI] Gemini API Key 설정 완료! (표준 모델: gemini-1.5-flash 고정)")
-        return True
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            res_body = resp.read().decode("utf-8")
+            res_json = json.loads(res_body)
+            models = [m["name"].replace("models/", "") for m in res_json.get("models", []) if "generateContent" in m.get("supportedGenerationMethods", [])]
+            if models:
+                chosen = None
+                for candidate in ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.5-flash"]:
+                    if candidate in models:
+                        chosen = candidate
+                        break
+                if not chosen:
+                    chosen = models[0]
+                active_model = chosen
+                print(f"[AI] API Key 검증 성공! 최적 모델 1개 고정: {active_model}")
+                return True
+    except urllib.error.HTTPError as he:
+        print(f"[AI Key 경고] 구글 API Key 인증 실패 (HTTP {he.code}). 키를 다시 확인해 주세요.")
     except Exception as e:
         print(f"[AI Key 경고] API Key 검증 중 오류: {e}")
+    
+    active_model = "gemini-2.0-flash"
     return False
 
 def parse_with_gemini_api(file_path, api_key):
-    """Google Gemini 1.5 Flash 표준 모델 단일 고정 분석"""
+    """Google Gemini 단일 지정 모델 분석"""
+    global active_model
     clean_key = api_key.strip()
     if not clean_key:
         print("[AI] Gemini API Key가 설정되지 않았습니다.")
@@ -121,8 +140,9 @@ def parse_with_gemini_api(file_path, api_key):
             }
         }
 
-        # 오직 표준 gemini-1.5-flash 모델 단일 고정!
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={clean_key}"
+        # 자동 매핑된 최적 모델 1개로 단 1번만 호출!
+        target_model = active_model if active_model else "gemini-2.0-flash"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{target_model}:generateContent?key={clean_key}"
         headers = {"Content-Type": "application/json"}
         data_json = json.dumps(payload).encode("utf-8")
 
@@ -140,11 +160,11 @@ def parse_with_gemini_api(file_path, api_key):
                 raw_text = raw_text[:-3]
 
             parsed_result = json.loads(raw_text.strip())
-            print(f"[AI] gemini-1.5-flash 모델로 {Path(file_path).name} 파싱 100% 성공! ({len(parsed_result.get('items', []))}건 추출됨)")
+            print(f"[AI] {target_model} 모델로 {Path(file_path).name} 파싱 100% 성공! ({len(parsed_result.get('items', []))}건 추출됨)")
             return parsed_result
 
     except urllib.error.HTTPError as he:
-        print(f"[AI] API 응답 에러 (gemini-1.5-flash): HTTP {he.code} {he.reason}")
+        print(f"[AI] API 응답 에러 ({active_model}): HTTP {he.code} {he.reason}")
         return None
     except Exception as ex:
         print(f"[AI] 파싱 중 오류 발생 ({Path(file_path).name}): {ex}")
@@ -251,7 +271,7 @@ async def scan_loop():
                 print(f"[감시] 감지된 새 문서 파일: {Path(file_path).name}")
                 api_key = config.get("geminiApiKey")
                 if api_key:
-                    print(f"[AI] gemini-1.5-flash AI 분석 시작... ({Path(file_path).name})")
+                    print(f"[AI] {active_model} AI 분석 시작... ({Path(file_path).name})")
                     result = parse_with_gemini_api(file_path, api_key)
                     if result:
                         await broadcast_scan_data(result)
@@ -265,7 +285,7 @@ async def scan_loop():
                 else:
                     print("[경고] Gemini API Key가 설정되지 않았습니다. 웹 화면 ⚙️ AI 설정에서 키를 등록해 주세요.")
 
-                # 속도 제한 방지용 2초 딜레이
+                # 속도 제한 방지용 딜레이
                 await asyncio.sleep(2)
 
         except Exception as e:
