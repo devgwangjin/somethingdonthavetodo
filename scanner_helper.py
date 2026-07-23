@@ -205,14 +205,35 @@ def parse_with_gemini_api(file_path, api_key):
                         pass
 
                     if he.code == 429:
-                        # 긴 JSON 대신 1줄 간결 메시지
-                        retry_msg = "잠시 후 리셋"
-                        if "retryDelay" in err_body:
-                            match = re.search(r'retryDelay["\']?:\s*["\']?(\d+s|\d+\.\d+s)', err_body)
-                            if match:
-                                retry_msg = f"{match.group(1)} 후 리셋"
-                        print(f"[AI] {model_name} 한도 초과 ({retry_msg}) ➔ 다음 모델로 즉시 스위칭!")
-                        continue  # 즉시 다음 모델!
+                        wait_sec = 12
+                        match = re.search(r'retryDelay["\']?:\s*["\']?(\d+(\.\d+)?)s', err_body)
+                        if match:
+                            try:
+                                wait_sec = int(float(match.group(1))) + 2
+                            except Exception:
+                                pass
+                        print(f"[AI 429] {model_name} 한도 대기 ➔ 구글 리셋 지침({wait_sec}초) 대기 후 자동 재시도합니다...")
+                        time.sleep(wait_sec)
+
+                        # 대기 후 바로 재시도
+                        try:
+                            req_retry = urllib.request.Request(url, data=data_json, headers=headers, method="POST")
+                            with urllib.request.urlopen(req_retry, timeout=60) as resp_r:
+                                res_body_r = resp_r.read().decode("utf-8")
+                                res_json_r = json.loads(res_body_r)
+                                candidates_r = res_json_r.get("candidates", [])
+                                if candidates_r:
+                                    parts_r = candidates_r[0].get("content", {}).get("parts", [])
+                                    if parts_r and "text" in parts_r[0]:
+                                        raw_text_r = parts_r[0]["text"].strip()
+                                        json_match_r = re.search(r'\{.*\}', raw_text_r, re.DOTALL)
+                                        clean_str_r = json_match_r.group(0) if json_match_r else raw_text_r
+                                        parsed_r = json.loads(clean_str_r)
+                                        print(f"[AI] {model_name} 모델 대기 후 재시도 100% 성공! ({Path(file_path).name})")
+                                        return parsed_r
+                        except Exception as ex_r:
+                            print(f"[AI] {model_name} 대기 후 재시도 미완료 ➔ 다음 모델로 스위칭")
+                        continue
                     elif he.code in [404, 400]:
                         print(f"[AI] {model_name} 미지원 모델({he.code}) ➔ 목록에서 제거됨.")
                         if model_name in available_models and len(available_models) > 1:
