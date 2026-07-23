@@ -122,7 +122,7 @@ def parse_with_gemini_api(file_path, api_key):
         # 다중 명세서 PDF 및 단일 이미지 모두 지원하는 다중 인식 프롬프트
         prompt_text = (
             "이 파일에 1개 이상의 거래명세서 문서/페이지가 들어있을 수 있습니다. "
-            "각 거래명세서 문서마다 'date'(YYYY-MM-DD), 'supplier'(상호/공급자명), 'items'(자재 목록: name, qty, price, total, remarks) 필드를 갖는 "
+            "각 거래명세서 문서마다 'date'(YYYY-MM-DD), 'supplier'(상호/공급자명: 명세서의 상호 칸에 적힌 업체명), 'items'(자재 목록: name, qty, price, total, remarks) 필드를 갖는 "
             "JSON 객체들의 배열(Array) 포맷으로 추출해줘. 단 1개뿐이어도 길이 1짜리 배열로 응답해. "
             "응답 예시: [{\"date\": \"2026-07-20\", \"supplier\": \"오포산업\", \"items\": [{\"name\": \"부스바\", \"qty\": 10, \"price\": 5000, \"total\": 50000, \"remarks\": \"\"}]}] "
             "마크다운 없이 오직 JSON 텍스트만 응답해."

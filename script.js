@@ -977,6 +977,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (Array.isArray(scanData.items) && scanData.items.length > 0) {
             itemsContainer.innerHTML = '';
 
+            const supplierTag = (scanData.supplier && scanData.supplier.trim()) ? `[${scanData.supplier.trim()}]` : '';
+
             scanData.items.forEach(item => {
                 addItemRow();
                 const lastRow = itemsContainer.lastElementChild;
@@ -992,7 +994,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (qtyInput) qtyInput.value = item.qty || '';
                 if (priceInput) priceInput.value = item.price || '';
                 if (totalInput) totalInput.value = item.total || (item.qty && item.price ? item.qty * item.price : '');
-                if (remarksInput && item.remarks) remarksInput.value = item.remarks;
+                
+                if (remarksInput) {
+                    let rawRemarks = (item.remarks || '').trim();
+                    if (supplierTag) {
+                        if (rawRemarks) {
+                            if (!rawRemarks.includes(supplierTag)) {
+                                remarksInput.value = `${supplierTag} ${rawRemarks}`;
+                            } else {
+                                remarksInput.value = rawRemarks;
+                            }
+                        } else {
+                            remarksInput.value = supplierTag;
+                        }
+                    } else {
+                        remarksInput.value = rawRemarks;
+                    }
+                }
             });
 
             calculateGrandTotal();
