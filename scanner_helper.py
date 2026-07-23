@@ -84,7 +84,10 @@ def check_gemini_api_key(api_key):
                 print(f"[AI] 429 속도 제한 시 모델 간 자동 스위칭 (라운드로빈 방식)")
                 return True
     except urllib.error.HTTPError as he:
-        print(f"[AI Key 경고] 구글 API Key 인증 실패 (HTTP {he.code}). 키를 다시 확인해 주세요.")
+        if he.code in [401, 403]:
+            print(f"[AI Key 경고] 구글 API Key 인증 실패 (HTTP {he.code}). 키를 다시 확인해 주세요.")
+        else:
+            print(f"[AI Key 알림] 구글 AI 서버 일시적 응답 지연 (HTTP {he.code}). 잠시 후 자동 재시도됩니다.")
     except Exception as e:
         print(f"[AI Key 경고] API Key 검증 중 오류: {e}")
     
