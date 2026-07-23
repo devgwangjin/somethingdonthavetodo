@@ -717,6 +717,30 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    const scanQueueBanner = document.getElementById('scanQueueBanner');
+    const scanFileSelect = document.getElementById('scanFileSelect');
+    const triggerAiParseBtn = document.getElementById('triggerAiParseBtn');
+    const scanBannerText = document.getElementById('scanBannerText');
+
+    if (triggerAiParseBtn) {
+        triggerAiParseBtn.addEventListener('click', () => {
+            if (!scanFileSelect || !scanFileSelect.value) {
+                alert('분석할 스캔 문서를 선택해 주세요.');
+                return;
+            }
+            if (!window._helperSocket || window._helperSocket.readyState !== WebSocket.OPEN) {
+                alert('🔴 로컬 헬퍼 프로그램이 연결되지 않았습니다. dist/scanner_helper.exe를 실행해 주세요.');
+                return;
+            }
+            triggerAiParseBtn.disabled = true;
+            triggerAiParseBtn.textContent = '⏳ AI 분석 진행 중...';
+            window._helperSocket.send(JSON.stringify({
+                type: 'PARSE_REQUEST',
+                filePath: scanFileSelect.value
+            }));
+        });
+    }
+
     // 로컬 헬퍼 프로그램 웹소켓 연동 (ws://localhost:8765) 싱글톤 보장
     const connectToHelper = () => {
         if (window._helperSocket) {
@@ -754,8 +778,35 @@ document.addEventListener('DOMContentLoaded', () => {
             socket.onmessage = (event) => {
                 try {
                     const data = JSON.parse(event.data);
-                    if (data.type === 'SCAN_PARSED') {
+                    
+                    if (data.type === 'SCAN_QUEUE_UPDATED') {
+                        if (Array.isArray(data.files) && data.files.length > 0) {
+                            if (scanQueueBanner) scanQueueBanner.style.display = 'block';
+                            if (scanBannerText) scanBannerText.textContent = `감지된 문서 ${data.files.length}건이 대기 중입니다.`;
+                            if (scanFileSelect) {
+                                scanFileSelect.innerHTML = '';
+                                data.files.forEach(f => {
+                                    const opt = document.createElement('option');
+                                    opt.value = f.path;
+                                    opt.textContent = f.name;
+                                    scanFileSelect.appendChild(opt);
+                                });
+                            }
+                        } else {
+                            if (scanQueueBanner) scanQueueBanner.style.display = 'none';
+                        }
+                    } else if (data.type === 'SCAN_PARSED') {
+                        if (triggerAiParseBtn) {
+                            triggerAiParseBtn.disabled = false;
+                            triggerAiParseBtn.textContent = '🤖 선택 문서 AI 분석 및 폼 기입';
+                        }
                         fillFormWithAiData(data);
+                    } else if (data.type === 'PARSE_ERROR') {
+                        if (triggerAiParseBtn) {
+                            triggerAiParseBtn.disabled = false;
+                            triggerAiParseBtn.textContent = '🤖 선택 문서 AI 분석 및 폼 기입';
+                        }
+                        alert(`⚠️ AI 분석 오류: ${data.message || '다시 시도해 주세요.'}`);
                     }
                 } catch (e) {
                     console.error('웹소켓 데이터 파싱 에러:', e);

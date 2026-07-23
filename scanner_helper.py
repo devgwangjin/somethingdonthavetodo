@@ -243,13 +243,20 @@ def find_new_scan_files():
 
 # ─── 웹소켓 통신 서버 ───
 async def websocket_handler(websocket):
-    """웹소켓 비동기 연결 관리 (안정적인 핸드셰이크 유지)"""
+    """웹소켓 비동기 연결 관리"""
     connected_websockets.add(websocket)
     try:
+        # 최초 연결 시 현재 감지된 대기열 파일 목록 전송
+        new_files = find_new_scan_files()
+        file_list = [{"path": f, "name": Path(f).name} for f in new_files]
+        await websocket.send(json.dumps({"type": "SCAN_QUEUE_UPDATED", "files": file_list}, ensure_ascii=False))
+
         async for message in websocket:
             try:
                 data = json.loads(message)
-                if data.get("type") == "CONFIG_SYNC":
+                msg_type = data.get("type")
+                
+                if msg_type == "CONFIG_SYNC":
                     if data.get("apiKey"):
                         config["geminiApiKey"] = data["apiKey"]
                     if data.get("printerIp"):
@@ -257,12 +264,52 @@ async def websocket_handler(websocket):
                     if data.get("printerBoxNum"):
                         config["printerBoxNum"] = data["printerBoxNum"]
                     save_config()
-            except Exception:
-                pass
+
+                elif msg_type == "PARSE_REQUEST":
+                    target_file = data.get("filePath")
+                    api_key = config.get("geminiApiKey")
+                    if target_file and os.path.exists(target_file):
+                        if not api_key:
+                            await websocket.send(json.dumps({"type": "PARSE_ERROR", "message": "API Key가 설정되지 않았습니다."}, ensure_ascii=False))
+                            continue
+
+                        print(f"[AI 분석 요청] 📄 {Path(target_file).name}")
+                        processed_files.add(target_file)
+                        save_processed_files()
+
+                        result = parse_with_gemini_api(target_file, api_key)
+                        if result:
+                            if isinstance(result, list):
+                                for idx, doc_data in enumerate(result):
+                                    await broadcast_scan_data(doc_data)
+                                    print(f"[성공] 🚀 다중 명세서 ({idx+1}/{len(result)}) 폼 기입 완료!")
+                                    await asyncio.sleep(1)
+                            else:
+                                await broadcast_scan_data(result)
+                                print(f"[성공] 🚀 폼 기입 완료! ({Path(target_file).name})")
+                        else:
+                            await websocket.send(json.dumps({"type": "PARSE_ERROR", "message": "AI 파싱 실패"}, ensure_ascii=False))
+
+                        # 대기열 갱신 전송
+                        updated_files = find_new_scan_files()
+                        up_list = [{"path": f, "name": Path(f).name} for f in updated_files]
+                        await broadcast_queue_updated(up_list)
+
+            except Exception as e:
+                print(f"[소켓 오류] {e}")
     except Exception:
         pass
     finally:
         connected_websockets.discard(websocket)
+
+async def broadcast_queue_updated(file_list):
+    """감지된 스캔 목록을 웹 앱으로 브로드캐스트"""
+    message = json.dumps({"type": "SCAN_QUEUE_UPDATED", "files": file_list}, ensure_ascii=False)
+    for ws in list(connected_websockets):
+        try:
+            await ws.send(message)
+        except Exception:
+            pass
 
 async def broadcast_scan_data(scan_data):
     """파싱 결과를 연결된 웹 앱으로 전송"""
@@ -275,44 +322,22 @@ async def broadcast_scan_data(scan_data):
         except Exception:
             pass
 
-# ─── 메인 감시 루프 ───
+# ─── 메인 감시 루프 (자동 덮어쓰기 없이 대기열 브로드캐스트만 수행) ───
 async def scan_loop():
-    print("[헬퍼] 스캔 문서 감시 루프 구동 중...")
+    print("[헬퍼] 스캔 문서 대기열 감시 루프 구동 중...")
+    last_files_count = -1
     while True:
         try:
-            # 1. 복합기 박스 자동 수집
             fetch_scans_from_fujifilm_printer()
-
-            # 2. 신규 감지 파일 검색
             new_files = find_new_scan_files()
-            for file_path in new_files:
-                print(f"[감시] 📄 신규 문서 감지: {Path(file_path).name}")
-                
-                api_key = config.get("geminiApiKey")
-                if not api_key:
-                    print(f"[경고] API Key 미등록 상태 ➔ Key 동기화 대기 중... ({Path(file_path).name})")
-                    continue
-
-                # API Key가 정식으로 연결되었을 때만 처리완료 기록
-                processed_files.add(file_path)
-                save_processed_files()
-
-                print(f"[AI] Gemini AI 분석 진행 중... ({Path(file_path).name})")
-                result = parse_with_gemini_api(file_path, api_key)
-                if result:
-                    if isinstance(result, list):
-                        for idx, doc_data in enumerate(result):
-                            await broadcast_scan_data(doc_data)
-                            print(f"[성공] 🚀 웹 앱으로 다중 명세서 ({idx+1}/{len(result)}) 전송 완료!")
-                            await asyncio.sleep(1)
-                    else:
-                        await broadcast_scan_data(result)
-                        print(f"[성공] 🚀 웹 앱으로 분석 결과 전송 완료!")
-                else:
-                    print(f"[알림] 분석 실패 또는 취소됨 ({Path(file_path).name})")
-
-                # 429 방지: 파일 처리 후 안전 쿨다운 5초 대기
-                await asyncio.sleep(5)
+            
+            # 대기열 수가 변경되었을 때만 알림 전송 (무단 파싱/덮어쓰기 안 함!)
+            if len(new_files) != last_files_count:
+                last_files_count = len(new_files)
+                file_list = [{"path": f, "name": Path(f).name} for f in new_files]
+                await broadcast_queue_updated(file_list)
+                if new_files:
+                    print(f"[감시] 📄 감지된 대기 문서 {len(new_files)}건 (웹 앱에서 선택 가능)")
 
         except Exception as e:
             print(f"[루프 에러] {e}")
