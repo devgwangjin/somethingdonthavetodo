@@ -325,8 +325,8 @@ def find_new_scan_files():
                         file_path = entry.path
                         try:
                             mtime = entry.stat().st_mtime
-                            # 이미 처리된 파일만 제외하고 최근 7일 이내 파일 모두 감지
-                            if file_path not in processed_files and (now - mtime < 86400 * 7):
+                            # 이미 처리된 파일만 제외하고 미처리 파일 모두 감지
+                            if file_path not in processed_files:
                                 found_files.append((mtime, file_path))
                         except Exception:
                             pass
@@ -363,11 +363,12 @@ async def websocket_handler(websocket):
                 elif msg_type == "PARSE_REQUEST":
                     target_file = data.get("filePath")
                     api_key = config.get("geminiApiKey")
-                    if target_file and os.path.exists(target_file):
-                        if not api_key:
-                            await websocket.send(json.dumps({"type": "PARSE_ERROR", "message": "API Key가 설정되지 않았습니다."}, ensure_ascii=False))
-                            continue
+                    if not api_key:
+                        print("[경고] 🔴 Gemini API Key가 설정되어 있지 않습니다!")
+                        await websocket.send(json.dumps({"type": "PARSE_ERROR", "message": "Gemini API Key가 등록되지 않았습니다. 우측 상단 🤖 AI 스캔 설정에서 API 키를 저장해 주세요."}, ensure_ascii=False))
+                        continue
 
+                    if target_file and os.path.exists(target_file):
                         print(f"[AI 분석 요청] 📄 {Path(target_file).name}")
                         processed_files.add(target_file)
                         save_processed_files()
@@ -383,15 +384,16 @@ async def websocket_handler(websocket):
                                 await broadcast_scan_data(result)
                                 print(f"[성공] 🚀 폼 기입 완료! ({Path(target_file).name})")
                         else:
-                            await websocket.send(json.dumps({"type": "PARSE_ERROR", "message": "AI 파싱 실패"}, ensure_ascii=False))
+                            await websocket.send(json.dumps({"type": "PARSE_ERROR", "message": "AI 파싱 분석에 실패했습니다. (Gemini API 응답 없음/오류)"}, ensure_ascii=False))
 
                         # 대기열 갱신 전송
                         updated_files = find_new_scan_files()
                         up_list = [{"path": f, "name": Path(f).name} for f in updated_files]
                         await broadcast_queue_updated(up_list)
+                    else:
+                        await websocket.send(json.dumps({"type": "PARSE_ERROR", "message": "요청한 파일이 존재하지 않습니다."}, ensure_ascii=False))
 
                 elif msg_type == "CLEAR_QUEUE":
-                    # 현재 감지된 모든 파일을 처리 완료 목록에 넣어 대기열 비우기
                     new_files = find_new_scan_files()
                     for f in new_files:
                         processed_files.add(f)
@@ -403,7 +405,13 @@ async def websocket_handler(websocket):
                     base64_data = data.get("base64Data")
                     mime_type = data.get("mimeType", "application/pdf")
                     api_key = config.get("geminiApiKey")
-                    if base64_data and api_key:
+
+                    if not api_key:
+                        print("[경고] 🔴 Gemini API Key가 설정되어 있지 않습니다!")
+                        await websocket.send(json.dumps({"type": "PARSE_ERROR", "message": "Gemini API Key가 등록되지 않았습니다. 우측 상단 🤖 AI 스캔 설정에서 API 키를 등록해 주세요."}, ensure_ascii=False))
+                        continue
+
+                    if base64_data:
                         print(f"[AI 분석 요청] 📁 수동 업로드 파일 분석 진행 중...")
                         result = parse_base64_with_gemini_api(base64_data, mime_type, api_key)
                         if result:
@@ -416,7 +424,7 @@ async def websocket_handler(websocket):
                                 await broadcast_scan_data(result)
                                 print(f"[성공] 🚀 수동 업로드 명세서 폼 기입 완료!")
                         else:
-                            await websocket.send(json.dumps({"type": "PARSE_ERROR", "message": "AI 파싱 실패"}, ensure_ascii=False))
+                            await websocket.send(json.dumps({"type": "PARSE_ERROR", "message": "AI가 문서 파싱에 실패했습니다. (API 키 확인 필요)"}, ensure_ascii=False))
 
             except Exception as e:
                 print(f"[소켓 오류] {e}")
