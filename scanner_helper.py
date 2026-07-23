@@ -113,8 +113,8 @@ def parse_with_gemini_api(file_path, api_key):
         headers = {"Content-Type": "application/json"}
         data_json = json.dumps(payload).encode("utf-8")
         
-        # 무료 쿼터 소비가 가장 적고 빠른 초경량 모델 순차 시도
-        target_models = ["gemini-2.0-flash-lite", "gemini-1.5-flash-8b", "gemini-2.0-flash"]
+        # 사용자 계정 1.5K(1500회) 정상 쿼터 보유 모델 gemini-1.5-flash-latest 사용
+        target_models = ["gemini-1.5-flash-latest", "gemini-2.0-flash"]
         
         for target_model in target_models:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{target_model}:generateContent?key={clean_key}"
