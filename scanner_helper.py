@@ -138,6 +138,7 @@ def parse_with_gemini_api(file_path, api_key):
                         if candidates:
                             parts = candidates[0].get("content", {}).get("parts", [])
                             if parts and "text" in parts[0]:
+                                raw_text = parts[0]["text"].strip()
                                 json_match = re.search(r'(\[.*\]|\{.*\})', raw_text, re.DOTALL)
                                 clean_json_str = json_match.group(0) if json_match else raw_text
                                 parsed_result = json.loads(clean_json_str)
@@ -163,8 +164,10 @@ def parse_with_gemini_api(file_path, api_key):
                         time.sleep(wait_sec)
                         continue
                     else:
+                        print(f"[AI] {target_model} HTTP 오류 {he.code}: {he.reason} - {err_body[:100]}")
                         break
-                except Exception:
+                except Exception as ex:
+                    print(f"[AI 오류] {target_model} 예외 발생: {ex}")
                     break
 
     except Exception as ex_all:
