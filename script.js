@@ -667,9 +667,23 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     loadAiSettings();
 
+    // 배지 상태 업데이트 함수
+    const updateHelperBadge = (isOnline) => {
+        if (!helperStatusBadge) return;
+        if (isOnline) {
+            helperStatusBadge.textContent = '🟢 헬퍼 연동됨';
+            helperStatusBadge.className = 'status-badge status-on';
+        } else {
+            helperStatusBadge.textContent = '🔴 헬퍼 미연동';
+            helperStatusBadge.className = 'status-badge status-off';
+        }
+    };
+
     if (aiSettingsBtn && aiSettingsModal) {
         aiSettingsBtn.addEventListener('click', () => {
             loadAiSettings();
+            const isConnected = window._helperSocket && window._helperSocket.readyState === WebSocket.OPEN;
+            updateHelperBadge(isConnected);
             aiSettingsModal.style.display = 'flex';
         });
 
@@ -707,6 +721,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const connectToHelper = () => {
         if (window._helperSocket) {
             if (window._helperSocket.readyState === WebSocket.OPEN) {
+                updateHelperBadge(true);
                 const configMsg = {
                     type: 'CONFIG_SYNC',
                     apiKey: localStorage.getItem('geminiApiKey') || '',
@@ -726,10 +741,7 @@ document.addEventListener('DOMContentLoaded', () => {
             window._helperSocket = socket;
 
             socket.onopen = () => {
-                if (helperStatusBadge) {
-                    helperStatusBadge.textContent = '🟢 헬퍼 연동됨';
-                    helperStatusBadge.className = 'status-badge status-on';
-                }
+                updateHelperBadge(true);
                 const configMsg = {
                     type: 'CONFIG_SYNC',
                     apiKey: localStorage.getItem('geminiApiKey') || '',
@@ -751,21 +763,16 @@ document.addEventListener('DOMContentLoaded', () => {
             };
 
             socket.onclose = (e) => {
-                if (helperStatusBadge) {
-                    helperStatusBadge.textContent = '🔴 헬퍼 미연동';
-                    helperStatusBadge.className = 'status-badge status-off';
-                }
+                updateHelperBadge(false);
                 window._helperSocket = null;
+                setTimeout(connectToHelper, 3000);
             };
 
             socket.onerror = () => {
-                if (helperStatusBadge) {
-                    helperStatusBadge.textContent = '🔴 헬퍼 미연동';
-                    helperStatusBadge.className = 'status-badge status-off';
-                }
+                updateHelperBadge(false);
             };
         } catch (err) {
-            console.log('헬퍼 연결 안됨');
+            updateHelperBadge(false);
         }
     };
 
