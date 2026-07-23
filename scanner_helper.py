@@ -72,29 +72,31 @@ def check_gemini_api_key(api_key):
         with urllib.request.urlopen(req, timeout=10) as resp:
             res_body = resp.read().decode("utf-8")
             res_json = json.loads(res_body)
+            # 구글 API가 실제 제공하는 모델명만 수집
             all_models = [m["name"].replace("models/", "") for m in res_json.get("models", []) if "generateContent" in m.get("supportedGenerationMethods", [])]
             
-            selected = ["gemini-1.5-flash"]
-            for m in all_models:
-                if m not in selected and ("flash" in m or "pro" in m):
-                    selected.append(m)
+            # Flash 모델 우선 배치
+            flash_models = [m for m in all_models if "flash" in m]
+            other_models = [m for m in all_models if "flash" not in m]
             
-            available_models = selected[:5]
-            print(f"[AI] API Key 검증 성공! 모델 목록 ({len(available_models)}개): {available_models}")
-            return True
+            selected = flash_models + other_models
+            if selected:
+                available_models = selected[:6]
+                print(f"[AI] API Key 검증 성공! 실제 사용 가능 모델 {len(available_models)}개: {available_models}")
+                return True
     except urllib.error.HTTPError as he:
         if he.code in [401, 403]:
             print(f"[AI Key 경고] 구글 API Key 인증 실패 (HTTP {he.code}). 키를 다시 확인해 주세요.")
         else:
-            print(f"[AI Key 알림] 구글 AI 서버 일시적 응답 지연 (HTTP {he.code}).")
+            print(f"[AI Key 알림] 구글 AI 서버 응답 상태: HTTP {he.code}")
     except Exception as e:
         print(f"[AI Key 경고] API Key 검증 중 오류: {e}")
     
-    available_models = ["gemini-1.5-flash", "gemini-2.0-flash"]
+    available_models = ["gemini-2.0-flash", "gemini-1.5-flash-latest"]
     return False
 
 def parse_with_gemini_api(file_path, api_key):
-    """Google Gemini 라운드로빈 분석: 429 시 즉시 다른 모델로 스위칭, 전부 429면 60초 대기 후 재시도"""
+    """Google Gemini 라운드로빈 분석: 429 시 구글 지침 시간만큼 정확히 대기 후 재시도"""
     global available_models
     clean_key = api_key.strip()
     if not clean_key:
@@ -143,20 +145,13 @@ def parse_with_gemini_api(file_path, api_key):
 
         headers = {"Content-Type": "application/json"}
         data_json = json.dumps(payload).encode("utf-8")
-        
-        if not available_models:
-            available_models = ["gemini-2.0-flash"]
-
         models_to_try = list(available_models)
 
-        # 라운드 최대 2회 (1라운드: 모델 순회, 2라운드: 60초 대기 후 재순회)
-        for round_num in range(2):
-            if round_num > 0:
-                print(f"[AI] 모든 모델 속도 제한. 60초 대기 후 2라운드 시작...")
-                time.sleep(60)
-
-            for model_name in models_to_try:
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={clean_key}"
+        for model_name in models_to_try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={clean_key}"
+            
+            # 모델당 최대 2회 시도 (429 발생 시 대기 후 1회 재시도)
+            for attempt in range(2):
                 req = urllib.request.Request(url, data=data_json, headers=headers, method="POST")
                 try:
                     with urllib.request.urlopen(req, timeout=60) as resp:
@@ -166,24 +161,19 @@ def parse_with_gemini_api(file_path, api_key):
                         candidates = res_json.get("candidates", [])
                         if not candidates:
                             print(f"[AI] {model_name} 응답 후보 없음. 건너뜀.")
-                            continue
+                            break
 
                         parts = candidates[0].get("content", {}).get("parts", [])
                         if not parts or "text" not in parts[0]:
                             print(f"[AI] {model_name} 텍스트 파트 없음. 건너뜀.")
-                            continue
+                            break
 
                         raw_text = parts[0]["text"].strip()
-                        
-                        # JSON 영역만 정규식으로 안전하게 추출
                         json_match = re.search(r'\{.*\}', raw_text, re.DOTALL)
-                        if json_match:
-                            clean_json_str = json_match.group(0)
-                        else:
-                            clean_json_str = raw_text
+                        clean_json_str = json_match.group(0) if json_match else raw_text
 
                         parsed_result = json.loads(clean_json_str)
-                        print(f"[AI] {model_name} 모델로 {Path(file_path).name} 파싱 성공! ({len(parsed_result.get('items', []))}건 추출됨)")
+                        print(f"[AI] 🎉 {model_name} 모델로 {Path(file_path).name} 파싱 성공! ({len(parsed_result.get('items', []))}건 추출됨)")
                         return parsed_result
 
                 except urllib.error.HTTPError as he:
@@ -194,48 +184,34 @@ def parse_with_gemini_api(file_path, api_key):
                         pass
 
                     if he.code == 429:
-                        wait_sec = 12
+                        wait_sec = 8
                         match = re.search(r'retryDelay["\']?:\s*["\']?(\d+(\.\d+)?)s', err_body)
                         if match:
                             try:
                                 wait_sec = int(float(match.group(1))) + 2
                             except Exception:
                                 pass
-                        print(f"[AI 429] {model_name} 한도 대기 ➔ 구글 리셋 지침({wait_sec}초) 대기 후 자동 재시도합니다...")
-                        time.sleep(wait_sec)
-
-                        # 대기 후 바로 재시도
-                        try:
-                            req_retry = urllib.request.Request(url, data=data_json, headers=headers, method="POST")
-                            with urllib.request.urlopen(req_retry, timeout=60) as resp_r:
-                                res_body_r = resp_r.read().decode("utf-8")
-                                res_json_r = json.loads(res_body_r)
-                                candidates_r = res_json_r.get("candidates", [])
-                                if candidates_r:
-                                    parts_r = candidates_r[0].get("content", {}).get("parts", [])
-                                    if parts_r and "text" in parts_r[0]:
-                                        raw_text_r = parts_r[0]["text"].strip()
-                                        json_match_r = re.search(r'\{.*\}', raw_text_r, re.DOTALL)
-                                        clean_str_r = json_match_r.group(0) if json_match_r else raw_text_r
-                                        parsed_r = json.loads(clean_str_r)
-                                        print(f"[AI] {model_name} 모델 대기 후 재시도 100% 성공! ({Path(file_path).name})")
-                                        return parsed_r
-                        except Exception as ex_r:
-                            print(f"[AI] {model_name} 대기 후 재시도 미완료 ➔ 다음 모델로 스위칭")
-                        continue
+                        
+                        if attempt == 0:
+                            print(f"[AI 429] {model_name} 한도 소진 ➔ 구글 지침대로 {wait_sec}초 대기 후 자동 재시도합니다...")
+                            time.sleep(wait_sec)
+                            continue  # 같은 모델로 2번째 시도!
+                        else:
+                            print(f"[AI] {model_name} 재시도 후에도 429 ➔ 다음 모델로 스위칭")
+                            break
                     elif he.code in [404, 400]:
-                        print(f"[AI] {model_name} 미지원 모델({he.code}) ➔ 목록에서 제거됨.")
+                        print(f"[AI] {model_name} 미지원 모델({he.code}) ➔ 목록에서 제거됨")
                         if model_name in available_models and len(available_models) > 1:
                             available_models.remove(model_name)
-                        continue
+                        break
                     else:
                         print(f"[AI] API 에러 ({model_name}): HTTP {he.code} {he.reason}")
-                        return None
+                        break
                 except Exception as ex:
-                    print(f"[AI] 파싱 오류 ({model_name}, {Path(file_path).name}): {ex}")
-                    return None
+                    print(f"[AI] 파싱 오류 ({model_name}): {ex}")
+                    break
 
-        print(f"[AI] 2라운드 모두 실패. 나중에 다시 시도합니다. ({Path(file_path).name})")
+        print(f"[AI] 모든 모델 시도 완료. 5분 후 감시 루프에서 자동 재시도합니다. ({Path(file_path).name})")
         return "RATE_LIMITED"
 
     except Exception as e:
