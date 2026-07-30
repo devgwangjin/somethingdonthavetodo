@@ -73,6 +73,76 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentPage = 1;
     const paginationContainer = document.getElementById('paginationContainer');
 
+    // ─── 비고 자동 추천: 기존 거래내역에서 동일/유사 품목 매칭 ───
+    const findMatchingRemarks = (inputName) => {
+        if (!inputName || inputName.trim().length < 2) return null;
+        const trimmed = inputName.trim().toLowerCase();
+
+        // 우선순위 1: 정확 일치 (비고가 있는 가장 최근 항목)
+        const exactMatch = [...transactions]
+            .reverse()
+            .find(t => t.name && t.name.trim().toLowerCase() === trimmed && t.remarks && t.remarks.trim());
+        if (exactMatch) return { remarks: exactMatch.remarks.trim(), matchType: '정확 일치' };
+
+        // 우선순위 2: 부분 포함 매칭 (3글자 이상 토큰)
+        const tokens = trimmed.split(/[\s,\/\-\*\(\)]+/).filter(tk => tk.length >= 3);
+        if (tokens.length === 0) return null;
+
+        const partialMatch = [...transactions]
+            .reverse()
+            .find(t => {
+                if (!t.name || !t.remarks || !t.remarks.trim()) return false;
+                const tName = t.name.trim().toLowerCase();
+                return tokens.some(tk => tName.includes(tk));
+            });
+        if (partialMatch) return { remarks: partialMatch.remarks.trim(), matchType: '유사 일치' };
+
+        return null;
+    };
+
+    // 추천 배너 UI 표시 (옵션 B: 배너만 표시, 사용자 클릭으로 적용)
+    const showRemarksSuggestion = (itemRow, suggestion) => {
+        // 기존 배너 제거
+        const existing = itemRow.querySelector('.remarks-suggestion');
+        if (existing) existing.remove();
+
+        const remarksInput = itemRow.querySelector('.item-remarks');
+        if (!remarksInput) return;
+
+        // 이미 비고에 내용이 있고, 추천 값과 동일하면 배너 표시하지 않음
+        if (remarksInput.value.trim() && remarksInput.value.trim() === suggestion.remarks) return;
+
+        const banner = document.createElement('div');
+        banner.className = 'remarks-suggestion';
+        banner.innerHTML = `
+            <span class="suggestion-text">
+                💡 기존 내역 ${suggestion.matchType}: <strong>${suggestion.remarks}</strong>
+            </span>
+            <div class="suggestion-actions">
+                <button type="button" class="apply-btn">✅ 적용</button>
+                <button type="button" class="dismiss-btn">✕</button>
+            </div>
+        `;
+
+        banner.querySelector('.apply-btn').addEventListener('click', () => {
+            // 기존 비고에 supplier 태그가 있으면 보존하고 뒤에 추가
+            const currentVal = remarksInput.value.trim();
+            const supplierMatch = currentVal.match(/^\[.*?\]/);
+            if (supplierMatch && !suggestion.remarks.startsWith('[')) {
+                remarksInput.value = `${supplierMatch[0]} ${suggestion.remarks}`;
+            } else {
+                remarksInput.value = suggestion.remarks;
+            }
+            banner.remove();
+        });
+
+        banner.querySelector('.dismiss-btn').addEventListener('click', () => {
+            banner.remove();
+        });
+
+        itemRow.appendChild(banner);
+    };
+
     // ─── 품목 행 관리 ───
     const addItemRow = () => {
         const clone = itemRowTemplate.content.cloneNode(true);
@@ -82,6 +152,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const priceInput = row.querySelector('.item-price');
         const totalInput = row.querySelector('.item-total');
         const deleteBtn = row.querySelector('.btn-delete');
+        const nameInput = row.querySelector('.item-name');
 
         const calculateRowTotal = () => {
             const qty = parseFloat(qtyInput.value) || 0;
@@ -105,6 +176,19 @@ document.addEventListener('DOMContentLoaded', () => {
         qtyInput.addEventListener('input', calculateRowTotal);
         priceInput.addEventListener('input', calculateRowTotal);
         totalInput.addEventListener('input', calculateRowPrice);
+
+        // ─── 품목명 blur 시 비고 자동 추천 ───
+        if (nameInput) {
+            nameInput.addEventListener('blur', () => {
+                const val = nameInput.value.trim();
+                if (val.length >= 2) {
+                    const match = findMatchingRemarks(val);
+                    if (match) {
+                        showRemarksSuggestion(row, match);
+                    }
+                }
+            });
+        }
 
         deleteBtn.addEventListener('click', () => {
             if (itemsContainer.children.length > 1) {
@@ -1009,6 +1093,14 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                     } else {
                         remarksInput.value = rawRemarks;
+                    }
+                }
+
+                // ─── AI 파싱 후 비고 자동 추천 (옵션 B: 배너만 표시) ───
+                if (item.name) {
+                    const match = findMatchingRemarks(item.name);
+                    if (match) {
+                        showRemarksSuggestion(lastRow, match);
                     }
                 }
             });
