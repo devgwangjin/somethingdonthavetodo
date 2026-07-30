@@ -330,21 +330,97 @@ th:nth-child(6), td:nth-child(6) { /* 총액 (6번째) */
     font-weight: 600;
 }
 
-th:nth-child(7), td:nth-child(7) { /* 관리 버튼 (7번째 - 잘림 방지 넉넉한 공간 보장) */
-    min-width: 130px;
-    width: 130px;
+th:nth-child(7), td:nth-child(7) { /* 관리 버튼 (7번째 - 오른쪽 Sticky 고정으로 씹힘/잘림 100% 원천 차단) */
+    position: sticky;
+    right: 0;
+    background-color: #1a1a2e;
+    z-index: 5;
+    box-shadow: -4px 0 10px rgba(0, 0, 0, 0.4);
+    min-width: 135px;
+    width: 135px;
     text-align: center;
     white-space: nowrap;
 }
 
+/* 수정 모드 행 배경색 및 Sticky 호환성 */
+tbody tr td:nth-child(7) {
+    background-color: #161626;
+}
+
+tbody tr:hover td:nth-child(7) {
+    background-color: #202035;
+}
+
+/* 수정/삭제/저장/취소 버튼 스타일 최적화 */
 .edit-row-btn, .delete-row-btn, .save-edit-btn, .cancel-edit-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    padding: 5px 10px;
-    font-size: 0.88rem;
+    padding: 5px 9px;
+    font-size: 0.85rem;
+    font-weight: 600;
     white-space: nowrap;
     margin: 0 2px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.edit-row-btn {
+    background-color: rgba(63, 190, 232, 0.15);
+    border: 1px solid #3fbee8;
+    color: #3fbee8;
+}
+.edit-row-btn:hover {
+    background-color: #3fbee8;
+    color: #112d4e;
+}
+
+.delete-row-btn {
+    background-color: rgba(255, 77, 79, 0.15);
+    border: 1px solid #ff4d4f;
+    color: #ff4d4f;
+}
+.delete-row-btn:hover {
+    background-color: #ff4d4f;
+    color: #fff;
+}
+
+.save-edit-btn {
+    background-color: rgba(56, 239, 125, 0.15);
+    border: 1px solid #38ef7d;
+    color: #38ef7d;
+}
+.save-edit-btn:hover {
+    background-color: #38ef7d;
+    color: #112d4e;
+}
+
+.cancel-edit-btn {
+    background-color: rgba(255, 255, 255, 0.08);
+    border: 1px solid #888;
+    color: #ccc;
+}
+.cancel-edit-btn:hover {
+    background-color: #888;
+    color: #fff;
+}
+
+/* 수정 모드 인풋 스타일 슬림 정돈 */
+.edit-date, .edit-name, .edit-qty, .edit-price, .edit-remarks, .edit-total {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 5px 8px;
+    font-size: 0.88rem;
+    background-color: #101020;
+    border: 1px solid #3fbee8;
+    color: #ffffff;
+    border-radius: 6px;
+    outline: none;
+}
+.edit-date:focus, .edit-name:focus, .edit-qty:focus, .edit-price:focus, .edit-remarks:focus, .edit-total:focus {
+    border-color: #a371f7;
+    box-shadow: 0 0 6px rgba(163, 113, 247, 0.4);
 }
 
 th.sortable {

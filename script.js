@@ -292,8 +292,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td>${item.remarks || ''}</td>
                 <td>${formatCurrency(item.total)}</td>
                 <td style="white-space: nowrap;">
-                    <button class="edit-row-btn" data-id="${item.id}">수정</button>
-                    <button class="delete-row-btn" data-id="${item.id}">삭제</button>
+                    <button class="edit-row-btn" data-id="${item.id}">✏️ 수정</button>
+                    <button class="delete-row-btn" data-id="${item.id}">🗑️ 삭제</button>
                 </td>
             `;
             dataTableBody.appendChild(tr);
@@ -397,8 +397,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td><input type="text" class="edit-remarks" value="${(item.remarks || '').replace(/"/g, '&quot;')}"></td>
                 <td><input type="number" class="edit-total" value="${item.total}" min="0"></td>
                 <td style="white-space: nowrap;">
-                    <button class="save-edit-btn" data-id="${item.id}">저장</button>
-                    <button class="cancel-edit-btn">취소</button>
+                    <button class="save-edit-btn" data-id="${item.id}">💾 저장</button>
+                    <button class="cancel-edit-btn">❌ 취소</button>
                 </td>
             `;
 
