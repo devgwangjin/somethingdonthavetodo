@@ -9,6 +9,17 @@ import urllib.request
 import urllib.error
 from pathlib import Path
 
+# ─── 윈도우 CMD 유니코드/이모지 깨짐(?) 원천 방지 처리 ───
+if sys.platform == "win32":
+    try:
+        os.system("chcp 65001 > nul")
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8")
+        if hasattr(sys.stderr, "reconfigure"):
+            sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
 # ─── 경로 및 설정 ───
 BASE_DIR = Path(__file__).parent
 CONFIG_PATH = BASE_DIR / "config.json"
@@ -364,12 +375,12 @@ async def websocket_handler(websocket):
                     target_file = data.get("filePath")
                     api_key = config.get("geminiApiKey")
                     if not api_key:
-                        print("[경고] 🔴 Gemini API Key가 설정되어 있지 않습니다!")
-                        await websocket.send(json.dumps({"type": "PARSE_ERROR", "message": "Gemini API Key가 등록되지 않았습니다. 우측 상단 🤖 AI 스캔 설정에서 API 키를 저장해 주세요."}, ensure_ascii=False))
+                        print("[경고] Gemini API Key가 설정되어 있지 않습니다!")
+                        await websocket.send(json.dumps({"type": "PARSE_ERROR", "message": "Gemini API Key가 등록되지 않았습니다. 우측 상단 AI 스캔 설정에서 API 키를 저장해 주세요."}, ensure_ascii=False))
                         continue
 
                     if target_file and os.path.exists(target_file):
-                        print(f"[AI 분석 요청] 📄 {Path(target_file).name}")
+                        print(f"[AI 분석 요청] >> {Path(target_file).name}")
                         processed_files.add(target_file)
                         save_processed_files()
 
@@ -377,7 +388,7 @@ async def websocket_handler(websocket):
                         if result:
                             docs_list = result if isinstance(result, list) else [result]
                             await broadcast_scan_data({"multiDocs": docs_list})
-                            print(f"[성공] 🚀 다중 명세서 (총 {len(docs_list)}건) 웹 앱 전달 완료! ({Path(target_file).name})")
+                            print(f"[성공] >> 다중 명세서 (총 {len(docs_list)}건) 웹 앱 전달 완료! ({Path(target_file).name})")
                         else:
                             await websocket.send(json.dumps({"type": "PARSE_ERROR", "message": "AI 파싱 분석에 실패했습니다. (Gemini API 응답 없음/오류)"}, ensure_ascii=False))
 
@@ -393,7 +404,7 @@ async def websocket_handler(websocket):
                     for f in new_files:
                         processed_files.add(f)
                     save_processed_files()
-                    print(f"[대기열 🧹] 스캔 대기 문서 {len(new_files)}건을 모두 지웠습니다.")
+                    print(f"[대기열 초기화] 스캔 대기 문서 {len(new_files)}건을 모두 지웠습니다.")
                     await broadcast_queue_updated([])
 
                 elif msg_type == "DIRECT_PARSE":
@@ -402,12 +413,12 @@ async def websocket_handler(websocket):
                     api_key = config.get("geminiApiKey")
 
                     if not api_key:
-                        print("[경고] 🔴 Gemini API Key가 설정되어 있지 않습니다!")
-                        await websocket.send(json.dumps({"type": "PARSE_ERROR", "message": "Gemini API Key가 등록되지 않았습니다. 우측 상단 🤖 AI 스캔 설정에서 API 키를 등록해 주세요."}, ensure_ascii=False))
+                        print("[경고] Gemini API Key가 설정되어 있지 않습니다!")
+                        await websocket.send(json.dumps({"type": "PARSE_ERROR", "message": "Gemini API Key가 등록되지 않았습니다. 우측 상단 AI 스캔 설정에서 API 키를 등록해 주세요."}, ensure_ascii=False))
                         continue
 
                     if base64_data:
-                        print(f"[AI 분석 요청] 📁 수동 업로드 파일 분석 시작! (용량: {len(base64_data)//1024} KB)")
+                        print(f"[AI 분석 요청] >> 수동 업로드 파일 분석 시작! (용량: {len(base64_data)//1024} KB)")
                         
                         async def run_direct_parse():
                             try:
@@ -415,7 +426,7 @@ async def websocket_handler(websocket):
                                 if result:
                                     docs_list = result if isinstance(result, list) else [result]
                                     await broadcast_scan_data({"multiDocs": docs_list})
-                                    print(f"[성공] 🚀 수동 업로드 다중 명세서 (총 {len(docs_list)}건) 웹 앱 전달 완료!")
+                                    print(f"[성공] >> 수동 업로드 다중 명세서 (총 {len(docs_list)}건) 웹 앱 전달 완료!")
                                 else:
                                     await websocket.send(json.dumps({"type": "PARSE_ERROR", "message": "AI가 문서 파싱에 실패했습니다. (Gemini API 쿼터 확인 필요)"}, ensure_ascii=False))
                             except Exception as ex_direct:
@@ -466,7 +477,7 @@ async def scan_loop():
                 file_list = [{"path": f, "name": Path(f).name} for f in new_files]
                 await broadcast_queue_updated(file_list)
                 if new_files:
-                    print(f"[감시] 📄 감지된 대기 문서 {len(new_files)}건 (웹 앱에서 선택 가능)")
+                    print(f"[감시] >> 감지된 대기 문서 {len(new_files)}건 (웹 앱에서 선택 가능)")
 
         except Exception as e:
             print(f"[루프 에러] {e}")
@@ -479,9 +490,9 @@ async def main():
 
     import websockets
     print("=" * 60)
-    print("🤖 자재 구매 내역 관리 — 로컬 스캔 헬퍼 서비스 (Ver 2.0 Clean)")
-    print(f"📌 복합기 IP: {config.get('printerIp')} (박스: {config.get('printerBoxNum')})")
-    print("📌 웹소켓 연동: ws://localhost:8765")
+    print("[시스템] 자재 구매 내역 관리 - 로컬 스캔 헬퍼 서비스 (Ver 2.0 Clean)")
+    print(f"[설정] 복합기 IP: {config.get('printerIp')} (박스: {config.get('printerBoxNum')})")
+    print("[설정] 웹소켓 연동: ws://localhost:8765")
     print("=" * 60)
 
     server = await websockets.serve(websocket_handler, "localhost", 8765, max_size=50 * 1024 * 1024, ping_interval=20, ping_timeout=20)
