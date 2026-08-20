@@ -216,6 +216,157 @@ document.addEventListener('DOMContentLoaded', () => {
     addItemRow();
     addItemBtn.addEventListener('click', addItemRow);
 
+    // ─── 엑셀 붙여넣기 기능 ───
+    const toggleExcelPasteBtn = document.getElementById('toggleExcelPasteBtn');
+    const excelPasteArea = document.getElementById('excelPasteArea');
+    const excelPasteInput = document.getElementById('excelPasteInput');
+    const parseExcelBtn = document.getElementById('parseExcelBtn');
+    const cancelExcelBtn = document.getElementById('cancelExcelBtn');
+
+    if (toggleExcelPasteBtn) {
+        toggleExcelPasteBtn.addEventListener('click', () => {
+            const isVisible = excelPasteArea.style.display !== 'none';
+            excelPasteArea.style.display = isVisible ? 'none' : 'block';
+            if (!isVisible) {
+                excelPasteInput.value = '';
+                excelPasteInput.focus();
+            }
+        });
+    }
+
+    if (cancelExcelBtn) {
+        cancelExcelBtn.addEventListener('click', () => {
+            excelPasteArea.style.display = 'none';
+            excelPasteInput.value = '';
+        });
+    }
+
+    // 엑셀 탭 구분 데이터 → 품목 배열로 파싱
+    const parseExcelData = (text) => {
+        const lines = text.trim().split('\n').filter(l => l.trim());
+        const items = [];
+
+        lines.forEach(line => {
+            const cells = line.split('\t').map(c => c.trim());
+
+            // 의미있는 셀만 추출
+            const nonEmpty = cells.filter(c => c !== '');
+            if (nonEmpty.length < 2) return;
+
+            // 셀을 유형별로 분류
+            const numbers = [];  // 숫자 값들 (수량, 단가, 총액)
+            const texts = [];    // 텍스트 값들 (품목명, 비고)
+            const UNIT_LABELS = ['ea', '개', 'set', '식', 'kg', 'm', 'ea.', 'pcs', 'roll', 'box'];
+
+            cells.forEach((cell, idx) => {
+                if (!cell) return;
+
+                // 단위 라벨 건너뛰기
+                if (UNIT_LABELS.includes(cell.toLowerCase())) return;
+
+                // 숫자인지 체크 (쉼표 포함 가능: 13,900)
+                const cleanNum = cell.replace(/,/g, '');
+                if (/^\d+(\.\d+)?$/.test(cleanNum)) {
+                    numbers.push({ value: parseFloat(cleanNum), idx, raw: cell });
+                } else {
+                    texts.push({ value: cell, idx });
+                }
+            });
+
+            const parsed = { name: '', qty: 0, price: 0, total: 0, remarks: '' };
+
+            // 텍스트 분류: 첫 번째 텍스트 = 품목명, 마지막 텍스트(숫자 뒤) = 비고
+            if (texts.length > 0) {
+                parsed.name = texts[0].value;
+
+                // 숫자들 중 마지막 숫자의 위치보다 뒤에 있는 텍스트 = 비고
+                if (texts.length > 1 && numbers.length > 0) {
+                    const lastNumIdx = Math.max(...numbers.map(n => n.idx));
+                    const remarkTexts = texts.filter(t => t.idx > lastNumIdx);
+                    if (remarkTexts.length > 0) {
+                        parsed.remarks = remarkTexts.map(t => t.value).join(' ');
+                    }
+                }
+            }
+
+            // 숫자 분류: 행번호(첫 번째 작은 정수) 건너뛰고, 나머지를 수량/단가/총액 순서로
+            let numValues = numbers.map(n => n.value);
+
+            // 첫 번째 숫자가 행번호인지 판단 (품목명보다 앞에 있고, 1~999 사이)
+            if (numbers.length > 0 && texts.length > 0 && numbers[0].idx < texts[0].idx && numbers[0].value <= 999 && Number.isInteger(numbers[0].value)) {
+                numValues = numValues.slice(1);
+            }
+
+            if (numValues.length >= 3) {
+                parsed.qty = numValues[0];
+                parsed.price = numValues[1];
+                parsed.total = numValues[2];
+            } else if (numValues.length === 2) {
+                parsed.qty = numValues[0];
+                parsed.price = numValues[1];
+                parsed.total = numValues[0] * numValues[1];
+            } else if (numValues.length === 1) {
+                parsed.qty = numValues[0];
+            }
+
+            if (parsed.name) items.push(parsed);
+        });
+
+        return items;
+    };
+
+    // 파싱 결과를 폼에 채우기
+    if (parseExcelBtn) {
+        parseExcelBtn.addEventListener('click', () => {
+            const rawText = excelPasteInput.value;
+            if (!rawText.trim()) {
+                alert('붙여넣기할 데이터가 없습니다.');
+                return;
+            }
+
+            const items = parseExcelData(rawText);
+            if (items.length === 0) {
+                alert('인식된 품목이 없습니다. 엑셀에서 데이터 행만 복사해주세요.');
+                return;
+            }
+
+            // 폼 초기화 후 채우기
+            itemsContainer.innerHTML = '';
+
+            items.forEach(item => {
+                addItemRow();
+                const lastRow = itemsContainer.lastElementChild;
+                if (!lastRow) return;
+
+                const nameInput = lastRow.querySelector('.item-name');
+                const qtyInput = lastRow.querySelector('.item-qty');
+                const priceInput = lastRow.querySelector('.item-price');
+                const totalInput = lastRow.querySelector('.item-total');
+                const remarksInput = lastRow.querySelector('.item-remarks');
+
+                if (nameInput) nameInput.value = item.name;
+                if (qtyInput) qtyInput.value = item.qty || '';
+                if (priceInput) priceInput.value = item.price || '';
+                if (totalInput) totalInput.value = item.total || '';
+                if (remarksInput) remarksInput.value = item.remarks || '';
+
+                // 비고 자동 추천도 실행
+                if (item.name) {
+                    const match = findMatchingRemarks(item.name);
+                    if (match) showRemarksSuggestion(lastRow, match);
+                }
+            });
+
+            calculateGrandTotal();
+
+            // 닫기
+            excelPasteArea.style.display = 'none';
+            excelPasteInput.value = '';
+
+            alert(`✅ ${items.length}개 품목이 폼에 입력되었습니다. 확인 후 저장해주세요.`);
+        });
+    }
+
     // ─── 저장 (날짜 유효성 검증 추가) ───
     saveTransactionBtn.addEventListener('click', () => {
         const date = transactionDateInput.value;

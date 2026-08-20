@@ -54,9 +54,18 @@
             <section class="card input-section">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px;">
                     <h2 style="margin: 0; font-size: 1.4rem;">새 거래 등록</h2>
-                    <div>
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                         <input type="file" id="directUploadInput" accept=".pdf, .png, .jpg, .jpeg" style="display: none;">
                         <button type="button" id="triggerDirectUploadBtn" class="btn-outline" style="border-color: #38ef7d; color: #38ef7d; font-size: 13px; height: 38px; padding: 0 16px; white-space: nowrap; display: inline-flex; align-items: center; background-color: rgba(56, 239, 125, 0.08);">📁 PDF/이미지 명세서 선택 (AI 분석)</button>
+                        <button type="button" id="toggleExcelPasteBtn" class="btn-outline" style="border-color: #36d7b7; color: #36d7b7; font-size: 13px; height: 38px; padding: 0 16px; white-space: nowrap; display: inline-flex; align-items: center; background-color: rgba(54, 215, 183, 0.08);">📋 엑셀 붙여넣기</button>
+                    </div>
+                </div>
+                <!-- 엑셀 붙여넣기 영역 -->
+                <div id="excelPasteArea" style="display: none; margin-bottom: 16px;">
+                    <textarea id="excelPasteInput" rows="5" placeholder="엑셀에서 복사한 데이터를 여기에 붙여넣기 (Ctrl+V) 하세요..." style="width: 100%; box-sizing: border-box; padding: 10px; font-size: 0.85rem; background-color: var(--input-bg); border: 2px dashed #36d7b7; color: var(--text-main); border-radius: 8px; resize: vertical; font-family: 'Consolas', monospace;"></textarea>
+                    <div style="display: flex; gap: 8px; margin-top: 8px; justify-content: flex-end;">
+                        <button type="button" id="parseExcelBtn" class="btn-primary" style="background: linear-gradient(135deg, #36d7b7 0%, #1bae95 100%); color: #0d1117; font-weight: 700; font-size: 13px; height: 34px; padding: 0 16px;">✅ 폼에 적용</button>
+                        <button type="button" id="cancelExcelBtn" class="btn-outline" style="font-size: 13px; height: 34px; padding: 0 14px;">취소</button>
                     </div>
                 </div>
                 <div class="form-group date-group">
