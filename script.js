@@ -1138,6 +1138,154 @@ document.addEventListener('DOMContentLoaded', () => {
         loadCurrentMultiDoc();
     };
 
+    // ─── 품목 통일 관리 ───
+    const unifyModal = document.getElementById('unifyModal');
+    const unifyItemList = document.getElementById('unifyItemList');
+    const unifySearchInput = document.getElementById('unifySearchInput');
+    const unifyTargetName = document.getElementById('unifyTargetName');
+    const unifyStats = document.getElementById('unifyStats');
+    const applyUnifyBtn = document.getElementById('applyUnifyBtn');
+    const unifyItemsBtn = document.getElementById('unifyItemsBtn');
+    const closeUnifyModalBtn = document.getElementById('closeUnifyModalBtn');
+
+    // 고유 품목명 + 건수 추출 (유사 이름끼리 자동 정렬)
+    const getUniqueItems = () => {
+        const countMap = {};
+        transactions.forEach(t => {
+            if (t.name && t.name.trim()) {
+                const name = t.name.trim();
+                countMap[name] = (countMap[name] || 0) + 1;
+            }
+        });
+        // 이름순 정렬 → 비슷한 이름끼리 모임
+        return Object.entries(countMap)
+            .map(([name, count]) => ({ name, count }))
+            .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+    };
+
+    // 품목 리스트 렌더링
+    const renderUnifyList = (filterText = '') => {
+        const items = getUniqueItems();
+        const filter = filterText.trim().toLowerCase();
+        const filtered = filter
+            ? items.filter(i => i.name.toLowerCase().includes(filter))
+            : items;
+
+        unifyItemList.innerHTML = '';
+        unifyStats.textContent = `총 ${items.length}개 품목 / 표시 ${filtered.length}개`;
+
+        filtered.forEach(item => {
+            const row = document.createElement('div');
+            row.className = 'unify-item';
+            row.innerHTML = `
+                <input type="checkbox" data-name="${item.name.replace(/"/g, '&quot;')}">
+                <span class="item-label">${item.name}</span>
+                <span class="item-count">${item.count}건</span>
+                <button type="button" class="use-as-standard-btn">이것으로 통일</button>
+            `;
+
+            const checkbox = row.querySelector('input[type="checkbox"]');
+            const useBtn = row.querySelector('.use-as-standard-btn');
+
+            // 행 클릭 → 체크박스 토글
+            row.addEventListener('click', (e) => {
+                if (e.target === useBtn || e.target === checkbox) return;
+                checkbox.checked = !checkbox.checked;
+                row.classList.toggle('selected', checkbox.checked);
+            });
+
+            checkbox.addEventListener('change', () => {
+                row.classList.toggle('selected', checkbox.checked);
+            });
+
+            // "이것으로 통일" 버튼 → 표준명 입력란에 이 품목명 채우기
+            useBtn.addEventListener('click', () => {
+                unifyTargetName.value = item.name;
+                unifyTargetName.focus();
+            });
+
+            unifyItemList.appendChild(row);
+        });
+    };
+
+    // 모달 열기
+    if (unifyItemsBtn) {
+        unifyItemsBtn.addEventListener('click', () => {
+            unifyModal.style.display = 'flex';
+            unifySearchInput.value = '';
+            unifyTargetName.value = '';
+            renderUnifyList();
+        });
+    }
+
+    // 모달 닫기
+    if (closeUnifyModalBtn) {
+        closeUnifyModalBtn.addEventListener('click', () => {
+            unifyModal.style.display = 'none';
+        });
+    }
+    if (unifyModal) {
+        unifyModal.addEventListener('click', (e) => {
+            if (e.target === unifyModal) unifyModal.style.display = 'none';
+        });
+    }
+
+    // 검색 필터
+    if (unifySearchInput) {
+        unifySearchInput.addEventListener('input', (e) => {
+            renderUnifyList(e.target.value);
+        });
+    }
+
+    // 일괄 변환 실행
+    if (applyUnifyBtn) {
+        applyUnifyBtn.addEventListener('click', () => {
+            const targetName = unifyTargetName.value.trim();
+            if (!targetName) {
+                alert('통일할 품목명을 입력해주세요.');
+                return;
+            }
+
+            const checkedBoxes = unifyItemList.querySelectorAll('input[type="checkbox"]:checked');
+            if (checkedBoxes.length === 0) {
+                alert('변환할 품목을 선택해주세요.');
+                return;
+            }
+
+            const selectedNames = Array.from(checkedBoxes).map(cb => cb.dataset.name);
+
+            // 이미 같은 이름만 선택한 경우
+            if (selectedNames.length === 1 && selectedNames[0] === targetName) {
+                alert('선택한 품목과 통일할 이름이 동일합니다.');
+                return;
+            }
+
+            const confirmMsg = `다음 ${selectedNames.length}개 품목명을 "${targetName}"(으)로 통일합니다.\n\n${selectedNames.map(n => `• ${n}`).join('\n')}\n\n진행하시겠습니까?`;
+            if (!confirm(confirmMsg)) return;
+
+            // 백업 저장
+            localStorage.setItem('inventoryData_backup', JSON.stringify(transactions));
+
+            // 일괄 변환
+            let changeCount = 0;
+            transactions.forEach(t => {
+                if (t.name && selectedNames.includes(t.name.trim())) {
+                    t.name = targetName;
+                    changeCount++;
+                }
+            });
+
+            saveToLocalStorage();
+            renderTable();
+
+            alert(`✅ 완료! ${changeCount}건의 거래 내역이 "${targetName}"(으)로 통일되었습니다.`);
+
+            // 리스트 새로고침
+            unifyTargetName.value = '';
+            renderUnifyList(unifySearchInput.value);
+        });
+    }
+
     connectToHelper();
 
     // ─── 초기화 ───
