@@ -1412,7 +1412,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
             unifyItemList.appendChild(row);
         });
-        });
     };
 
     // ─── 기존 수동 통일(탭 1) 기능 유지 ───
