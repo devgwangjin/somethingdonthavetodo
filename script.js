@@ -1640,14 +1640,75 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // ─── AI 규칙 자동 제안 로직 ───
+    // ─── 스마트 자체 규칙 자동 추출 알고리즘 (Pure JS) ───
+    const autoGenerateSmartRules = () => {
+        const uniqueItems = getUniqueItems().map(i => i.name.trim());
+        if (uniqueItems.length < 2) {
+            alert('분석할 품목 데이터가 2개 이상 필요합니다.');
+            return [];
+        }
+
+        const generatedRules = [];
+        const addedKeywords = new Set(itemAliasRules.map(r => r.keyword.toLowerCase()));
+
+        // 1. 괄호 / 부가설명 포함 관계 자동 감지
+        // 예: "E-SEN" 과 "E-SEN (기상 4종)" -> "E-SEN" -> "E-SEN (기상 4종)"
+        uniqueItems.forEach(shortName => {
+            if (shortName.length < 2) return;
+            const shortLower = shortName.toLowerCase();
+
+            // shortName을 포함하면서 더 긴 표준명 후보 찾기
+            const candidates = uniqueItems.filter(longName => {
+                if (longName === shortName) return false;
+                const longLower = longName.toLowerCase();
+                // 완전히 포함하거나, 특수문자/괄호 제거 후 포함하는 경우
+                return longLower.includes(shortLower) || longLower.startsWith(shortLower);
+            });
+
+            if (candidates.length > 0) {
+                // 가장 상세하고 긴 이름을 표준명으로 선택
+                candidates.sort((a, b) => b.length - a.length);
+                const bestStandard = candidates[0];
+
+                if (!addedKeywords.has(shortLower) && shortLower !== bestStandard.toLowerCase()) {
+                    generatedRules.push({
+                        keyword: shortName,
+                        standardName: bestStandard
+                    });
+                    addedKeywords.add(shortLower);
+                }
+            }
+        });
+
+        // 2. 띄어쓰기 차이 정규화 (예: "차단기 20A" vs "차단기20A")
+        uniqueItems.forEach(nameA => {
+            const noSpaceA = nameA.replace(/\s+/g, '').toLowerCase();
+            uniqueItems.forEach(nameB => {
+                if (nameA === nameB) return;
+                const noSpaceB = nameB.replace(/\s+/g, '').toLowerCase();
+                if (noSpaceA === noSpaceB) {
+                    // 공백이 잘 들어가 있는 쪽(또는 더 긴 쪽)을 표준으로
+                    const standard = nameA.length >= nameB.length ? nameA : nameB;
+                    const keyword = nameA.length < nameB.length ? nameA : nameB;
+                    const kwLower = keyword.toLowerCase();
+
+                    if (!addedKeywords.has(kwLower)) {
+                        generatedRules.push({ keyword, standardName: standard });
+                        addedKeywords.add(kwLower);
+                    }
+                }
+            });
+        });
+
+        return generatedRules;
+    };
+
+    // ─── AI 및 자체 스마트 규칙 자동 제안 로직 ───
     const aiRecommendBtn = document.getElementById('aiRecommendBtn');
     if (aiRecommendBtn) {
         aiRecommendBtn.addEventListener('click', () => {
-            if (!socket || socket.readyState !== WebSocket.OPEN) {
-                alert('스캔 헬퍼 서비스와 연결되어 있지 않습니다.\n(우측 상단 🔴 헬퍼 미연동 상태 확인)');
-                return;
-            }
+            const helperSocket = window._helperSocket;
+            const isHelperConnected = helperSocket && helperSocket.readyState === WebSocket.OPEN;
 
             // 고유 품목명 추출
             const uniqueItems = getUniqueItems().map(i => i.name);
@@ -1656,16 +1717,39 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            // 로딩 상태 표시
-            aiRecommendBtn.disabled = true;
-            aiRecommendBtn.innerHTML = '⏳ AI 분석 중...';
-            aiRecommendBtn.style.background = '#6b7280';
+            if (isHelperConnected) {
+                // 1) 헬퍼가 연결된 경우: Gemini AI로 심층 분석
+                aiRecommendBtn.disabled = true;
+                aiRecommendBtn.innerHTML = '⏳ AI 심층 분석 중...';
+                aiRecommendBtn.style.background = '#6b7280';
 
-            // 웹소켓으로 데이터 전송
-            socket.send(JSON.stringify({
-                type: 'RECOMMEND_ALIASES',
-                items: uniqueItems
-            }));
+                helperSocket.send(JSON.stringify({
+                    type: 'RECOMMEND_ALIASES',
+                    items: uniqueItems
+                }));
+            } else {
+                // 2) 헬퍼 미연동 시: 브라우저 자체 스마트 알고리즘으로 즉시 추출!
+                const smartRules = autoGenerateSmartRules();
+
+                if (smartRules.length === 0) {
+                    alert('💡 자동으로 묶을 만한 유사 품목(포함 관계, 괄호 누락, 띄어쓰기 오타 등)을 찾지 못했습니다.\n새로운 품목을 수동으로 추가해보세요.');
+                    return;
+                }
+
+                // 규칙 자동 등록
+                smartRules.forEach(rule => {
+                    itemAliasRules.push(rule);
+                });
+                saveAliasRules();
+                renderAliasRules();
+
+                alert(`🎉 스마트 분석 완료!\n유사/축약 품목 ${smartRules.length}개에 대한 자동 변환 규칙이 생성되었습니다.\n\n우측 미리보기를 통해 검수 후 [선택 항목 안전 변환]을 눌러주세요!`);
+
+                // 미리보기 테이블 자동 검색 실행
+                if (previewAliasChangesBtn) {
+                    previewAliasChangesBtn.click();
+                }
+            }
         });
     }
 
