@@ -1034,71 +1034,100 @@ tr.receipt-divider td {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 8px 10px;
+    padding: 10px 14px;
     background: rgba(255, 255, 255, 0.03);
     border: 1px solid var(--border-color);
-    border-radius: 6px;
-    gap: 8px;
-    font-size: 12px;
+    border-radius: 8px;
+    gap: 12px;
+    font-size: 13px;
+    transition: background 0.15s;
+}
+.alias-rule-item:hover {
+    background: rgba(255, 255, 255, 0.06);
 }
 .alias-rule-item .keyword {
     color: #a8d8ff;
-    font-weight: 600;
+    font-weight: 700;
+    white-space: nowrap;
 }
 .alias-rule-item .arrow {
     color: #6b7280;
+    flex-shrink: 0;
 }
 .alias-rule-item .standard {
     color: var(--text-main);
     flex: 1;
     word-break: break-all;
+    line-height: 1.4;
 }
 .alias-rule-item .delete-btn {
     background: none;
-    border: none;
+    border: 1px solid rgba(255, 77, 79, 0.3);
     color: #ff4d4f;
     cursor: pointer;
-    opacity: 0.6;
-    padding: 2px 6px;
-    border-radius: 4px;
+    opacity: 0.8;
+    padding: 4px 8px;
+    border-radius: 5px;
+    font-size: 11px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: all 0.15s;
 }
 .alias-rule-item .delete-btn:hover {
     opacity: 1;
-    background: rgba(255, 77, 79, 0.1);
+    background: rgba(255, 77, 79, 0.15);
+    border-color: #ff4d4f;
 }
 
 /* ── 검수 미리보기 테이블 스타일 ── */
+#aliasPreviewTable {
+    width: 100%;
+    border-collapse: collapse;
+}
 #aliasPreviewTable th {
-    background-color: rgba(255, 255, 255, 0.05);
+    background-color: rgba(255, 255, 255, 0.06);
     border-bottom: 1px solid var(--border-color);
     position: sticky;
     top: 0;
+    padding: 10px 12px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #a0a0b0;
+    z-index: 2;
 }
 #aliasPreviewTable td {
-    padding: 6px;
+    padding: 10px 12px;
     border-bottom: 1px solid var(--border-color);
+    font-size: 13px;
+    vertical-align: middle;
+}
+.preview-row {
+    cursor: pointer;
+    transition: background-color 0.15s;
 }
 .preview-row:hover {
-    background-color: rgba(255, 255, 255, 0.03);
+    background-color: rgba(255, 255, 255, 0.04);
 }
 .preview-row.selected {
-    background-color: rgba(63, 190, 232, 0.08);
+    background-color: rgba(63, 190, 232, 0.09);
 }
 .preview-old-name {
-    color: #a0a0b0;
+    color: #8b949e;
     text-decoration: line-through;
+    word-break: break-all;
 }
 .preview-new-name {
     color: #38ef7d;
     font-weight: 600;
+    word-break: break-all;
 }
 
-/* ── 모달 레이아웃 안정화 ── */
+/* ── 모달 레이아웃 대폭 확장 (1280px / 85vh) ── */
 #unifyModal .modal-content {
-    max-width: 820px !important;
-    width: 90% !important;
-    height: 680px !important;
-    max-height: 90vh !important;
+    max-width: 1280px !important;
+    width: 94vw !important;
+    height: 85vh !important;
+    max-height: 88vh !important;
     padding: 0 !important;
     overflow: hidden !important;
     display: flex !important;
@@ -1106,15 +1135,15 @@ tr.receipt-divider td {
 }
 
 #unifyModal .modal-header {
-    padding: 16px 24px 0 24px !important;
+    padding: 18px 24px 0 24px !important;
     margin: 0 !important;
     border-bottom: 1px solid var(--border-color) !important;
 }
 
 #aiRecommendBtn {
     width: auto !important;
-    padding: 6px 14px !important;
-    font-size: 12px !important;
+    padding: 8px 16px !important;
+    font-size: 13px !important;
     white-space: nowrap !important;
     flex-shrink: 0 !important;
     background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%) !important;
@@ -1124,6 +1153,7 @@ tr.receipt-divider td {
     display: inline-flex !important;
     align-items: center !important;
     gap: 6px !important;
+    font-weight: 600;
 }
 
 #aiRecommendBtn:hover {
@@ -1140,4 +1170,5 @@ tr.receipt-divider td {
     width: auto !important;
     white-space: nowrap !important;
 }
+
 
