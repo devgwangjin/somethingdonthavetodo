@@ -224,8 +224,11 @@
                 
                 <!-- 상단: 규칙 추가 폼 -->
                 <div style="padding: 16px 20px; border-bottom: 1px solid var(--border-color); background: rgba(0,0,0,0.2);">
-                    <div style="font-size: 13px; color: #a0a0b0; margin-bottom: 10px;">
-                        새로운 입력(AI스캔, 엑셀 붙여넣기, 수동 입력) 시 자동으로 표준명으로 변경해주는 규칙입니다.
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
+                        <div style="font-size: 13px; color: #a0a0b0;">
+                            새로운 입력(AI스캔, 엑셀 붙여넣기, 수동 입력) 시 자동으로 표준명으로 변경해주는 규칙입니다.
+                        </div>
+                        <button type="button" id="aiRecommendBtn" class="btn-primary" style="height: 28px; padding: 0 12px; font-size: 12px; background: linear-gradient(135deg, #a855f7 0%, #7c3aed 100%);">✨ AI 자동 규칙 제안</button>
                     </div>
                     <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
                         <input type="text" id="aliasKeyword" class="search-input" placeholder="원래 입력명 (예: E-SEN)" style="flex: 1; min-width: 150px; height: 36px; font-size: 13px;">

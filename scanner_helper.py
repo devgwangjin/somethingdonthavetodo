@@ -281,6 +281,65 @@ def parse_base64_with_gemini_api(base64_data, mime_type, api_key):
 
     return None
 
+def recommend_aliases_with_gemini_api(item_names, api_key):
+    """기존 품목명 리스트를 분석하여 유사 항목 매핑 규칙 추천"""
+    clean_key = api_key.strip()
+    if not clean_key or not item_names:
+        return None
+
+    # 프롬프트: AI가 오타, 띄어쓰기, 축약어 등을 인식하여 하나로 묶도록 유도
+    prompt_text = (
+        "다음은 재고 관리 시스템에 등록된 품목명 목록입니다.\n"
+        "이 목록에서 의미상 같은 품목인데 띄어쓰기, 오타, 축약어, 부가설명 누락 등으로 인해 다르게 입력된 항목들을 찾아 그룹화해주세요.\n"
+        "각 그룹에 대해, 사람들이 가장 짧고 흔하게 입력할 만한 단어를 'keyword'로, 가장 정확하고 상세한 표기법을 'standardName'으로 지정하여 매핑 규칙을 만들어주세요.\n\n"
+        "응답은 반드시 아래 JSON 배열 포맷을 엄격히 지켜주세요. 마크다운이나 다른 설명은 절대 포함하지 마세요.\n"
+        "형식: [{\"keyword\": \"짧은이름\", \"standardName\": \"상세한올바른이름\"}, ...]\n\n"
+        f"품목명 목록: {json.dumps(item_names, ensure_ascii=False)}"
+    )
+
+    payload = {
+        "contents": [{"parts": [{"text": prompt_text}]}],
+        "generationConfig": {
+            "response_mime_type": "application/json",
+            "maxOutputTokens": 4096,
+            "temperature": 0.1
+        }
+    }
+
+    headers = {"Content-Type": "application/json"}
+    data_json = json.dumps(payload).encode("utf-8")
+    
+    target_models = [
+        "gemini-3.1-flash-lite",
+        "gemini-3.5-flash-lite",
+        "gemini-2.5-flash",
+        "gemini-2.0-flash",
+        "gemini-1.5-flash"
+    ]
+    
+    for target_model in target_models:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{target_model}:generateContent?key={clean_key}"
+        try:
+            req = urllib.request.Request(url, data=data_json, headers=headers, method="POST")
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                res_body = resp.read().decode("utf-8")
+                res_json = json.loads(res_body)
+
+                candidates = res_json.get("candidates", [])
+                if candidates:
+                    parts = candidates[0].get("content", {}).get("parts", [])
+                    if parts and "text" in parts[0]:
+                        raw_text = parts[0]["text"].strip()
+                        parsed_result = clean_and_repair_json(raw_text)
+                        if parsed_result:
+                            print(f"[AI] 🎉 규칙 추천 ({target_model}) 파싱 성공!")
+                            return parsed_result
+        except Exception as ex:
+            print(f"[AI 오류] 규칙 추천 {target_model} 예외: {ex}")
+            continue
+
+    return None
+
 # ─── 복합기 및 파일 감지 ───
 def fetch_scans_from_fujifilm_printer():
     """후지필름 Apeos C3570 복합기 Web Box (192.168.0.210 / 006) 수집"""
@@ -434,6 +493,37 @@ async def websocket_handler(websocket):
                                 await websocket.send(json.dumps({"type": "PARSE_ERROR", "message": f"파싱 중 오류 발생: {ex_direct}"}, ensure_ascii=False))
 
                         asyncio.create_task(run_direct_parse())
+
+                elif msg_type == "RECOMMEND_ALIASES":
+                    items_list = data.get("items", [])
+                    api_key = config.get("geminiApiKey")
+                    if not api_key:
+                        await websocket.send(json.dumps({"type": "RECOMMEND_ERROR", "message": "Gemini API Key가 등록되지 않았습니다."}, ensure_ascii=False))
+                        continue
+                    
+                    if not items_list:
+                        await websocket.send(json.dumps({"type": "RECOMMEND_ERROR", "message": "분석할 품목명 데이터가 없습니다."}, ensure_ascii=False))
+                        continue
+
+                    print(f"[AI 분석 요청] >> {len(items_list)}개 품목에 대한 매핑 규칙 추천 시작!")
+                    
+                    async def run_recommend():
+                        try:
+                            # 백그라운드 태스크로 AI API 호출
+                            rules = await asyncio.to_thread(recommend_aliases_with_gemini_api, items_list, api_key)
+                            if rules and isinstance(rules, list):
+                                await websocket.send(json.dumps({
+                                    "type": "ALIAS_RECOMMENDATIONS",
+                                    "rules": rules
+                                }, ensure_ascii=False))
+                                print(f"[성공] >> {len(rules)}개의 매핑 규칙 추천 완료!")
+                            else:
+                                await websocket.send(json.dumps({"type": "RECOMMEND_ERROR", "message": "AI가 규칙을 생성하지 못했습니다."}, ensure_ascii=False))
+                        except Exception as ex_rec:
+                            print(f"[추천 에러] {ex_rec}")
+                            await websocket.send(json.dumps({"type": "RECOMMEND_ERROR", "message": f"추천 중 오류 발생: {ex_rec}"}, ensure_ascii=False))
+
+                    asyncio.create_task(run_recommend())
 
             except Exception as e:
                 print(f"[소켓 오류] {e}")

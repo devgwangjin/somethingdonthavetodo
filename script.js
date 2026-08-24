@@ -1182,6 +1182,55 @@ document.addEventListener('DOMContentLoaded', () => {
                             triggerDirectUploadBtn.textContent = '📁 PDF/이미지 명세서 선택 (AI 분석)';
                         }
                         alert(`⚠️ AI 분석 오류: ${data.message || '다시 시도해 주세요.'}`);
+                    } else if (data.type === 'ALIAS_RECOMMENDATIONS') {
+                        const btn = document.getElementById('aiRecommendBtn');
+                        if (btn) {
+                            btn.disabled = false;
+                            btn.innerHTML = '✨ AI 자동 규칙 제안';
+                            btn.style.background = 'linear-gradient(135deg, #a855f7 0%, #7c3aed 100%)';
+                        }
+                        
+                        if (Array.isArray(data.rules) && data.rules.length > 0) {
+                            let addedCount = 0;
+                            data.rules.forEach(rule => {
+                                if (rule.keyword && rule.standardName) {
+                                    // 중복이 아니면 자동 추가
+                                    const exists = itemAliasRules.some(r => r.keyword.toLowerCase() === rule.keyword.trim().toLowerCase());
+                                    if (!exists && rule.keyword.trim() !== rule.standardName.trim()) {
+                                        itemAliasRules.push({
+                                            keyword: rule.keyword.trim(),
+                                            standardName: rule.standardName.trim()
+                                        });
+                                        addedCount++;
+                                    }
+                                }
+                            });
+                            
+                            if (addedCount > 0) {
+                                saveAliasRules();
+                                // 전역 함수로 등록한 게 아니므로, 만약 renderAliasRules 접근 불가면 에러날 수 있음.
+                                // DOM 이벤트에서 호출된 것이므로 renderAliasRules는 상단에 선언되어 있나?
+                                // script.js 하단부에 선언되어 있어 호이스팅 문제 있을 수 있으므로 버튼 클릭으로 트리거.
+                                alert(`🎉 AI가 ${addedCount}개의 변환 규칙을 추천하여 자동으로 등록했습니다!\n(미리보기 목록을 통해 검수해보세요)`);
+                                const tabBtn = document.querySelector('.tab-btn[data-tab="tab-alias"]');
+                                if (tabBtn) tabBtn.click(); // 리렌더링 트리거
+                                
+                                const previewBtn = document.getElementById('previewAliasChangesBtn');
+                                if (previewBtn) previewBtn.click();
+                            } else {
+                                alert('💡 AI가 새로운 규칙을 제안했지만, 이미 모두 등록되어 있거나 유효하지 않습니다.');
+                            }
+                        } else {
+                            alert('💡 추천할 만한 새로운 규칙을 찾지 못했습니다.');
+                        }
+                    } else if (data.type === 'RECOMMEND_ERROR') {
+                        const btn = document.getElementById('aiRecommendBtn');
+                        if (btn) {
+                            btn.disabled = false;
+                            btn.innerHTML = '✨ AI 자동 규칙 제안';
+                            btn.style.background = 'linear-gradient(135deg, #a855f7 0%, #7c3aed 100%)';
+                        }
+                        alert(`⚠️ AI 추천 오류: ${data.message}`);
                     }
                 } catch (e) {
                     console.error('웹소켓 데이터 파싱 에러:', e);
@@ -1588,6 +1637,35 @@ document.addEventListener('DOMContentLoaded', () => {
             if (aliasPreviewTable.style.display === 'table') {
                 previewAliasChangesBtn.click();
             }
+        });
+    }
+
+    // ─── AI 규칙 자동 제안 로직 ───
+    const aiRecommendBtn = document.getElementById('aiRecommendBtn');
+    if (aiRecommendBtn) {
+        aiRecommendBtn.addEventListener('click', () => {
+            if (!socket || socket.readyState !== WebSocket.OPEN) {
+                alert('스캔 헬퍼 서비스와 연결되어 있지 않습니다.\n(우측 상단 🔴 헬퍼 미연동 상태 확인)');
+                return;
+            }
+
+            // 고유 품목명 추출
+            const uniqueItems = getUniqueItems().map(i => i.name);
+            if (uniqueItems.length === 0) {
+                alert('분석할 거래 데이터가 없습니다.');
+                return;
+            }
+
+            // 로딩 상태 표시
+            aiRecommendBtn.disabled = true;
+            aiRecommendBtn.innerHTML = '⏳ AI 분석 중...';
+            aiRecommendBtn.style.background = '#6b7280';
+
+            // 웹소켓으로 데이터 전송
+            socket.send(JSON.stringify({
+                type: 'RECOMMEND_ALIASES',
+                items: uniqueItems
+            }));
         });
     }
 
