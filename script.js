@@ -1640,6 +1640,29 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // ─── 규칙 전체 비우기 (초기화) ───
+    const clearAllAliasRulesBtn = document.getElementById('clearAllAliasRulesBtn');
+    if (clearAllAliasRulesBtn) {
+        clearAllAliasRulesBtn.addEventListener('click', () => {
+            if (itemAliasRules.length === 0) {
+                alert('삭제할 등록 규칙이 없습니다.');
+                return;
+            }
+
+            if (confirm(`등록된 ${itemAliasRules.length}개의 모든 변환 규칙을 삭제(초기화)하시겠습니까?\n\n(언제든 [✨ AI 자동 규칙 제안]을 다시 눌러 새로 생성할 수 있습니다)`)) {
+                itemAliasRules = [];
+                saveAliasRules();
+                renderAliasRules();
+
+                // 미리보기 테이블도 비우기
+                previewEmptyState.style.display = 'block';
+                previewEmptyState.innerHTML = '"모든 규칙 대상 검색"을 누르면<br>기존 거래내역 중 변환 대상이 한눈에 표시됩니다.';
+                aliasPreviewTable.style.display = 'none';
+                applyPreviewActionDiv.style.display = 'none';
+            }
+        });
+    }
+
     // ─── 스마트 자체 규칙 자동 추출 알고리즘 (Pure JS) ───
     const autoGenerateSmartRules = () => {
         const uniqueItems = getUniqueItems().map(i => i.name.trim());
