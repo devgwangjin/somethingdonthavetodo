@@ -73,6 +73,34 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentPage = 1;
     const paginationContainer = document.getElementById('paginationContainer');
 
+    // ─── 품목명 자동 보정/표준화 사전(Alias Rules) ───
+    let itemAliasRules = JSON.parse(localStorage.getItem('itemAliasRules')) || [];
+
+    const saveAliasRules = () => {
+        localStorage.setItem('itemAliasRules', JSON.stringify(itemAliasRules));
+    };
+
+    // 품목명 변환기 코어 로직 (문자열 포함 검사 후 변환)
+    const applyItemAlias = (rawName) => {
+        if (!rawName) return rawName;
+        const trimName = rawName.trim();
+        const lowerName = trimName.toLowerCase();
+
+        for (const rule of itemAliasRules) {
+            // 규칙의 keyword가 현재 품목명에 포함되어 있으면 변경
+            const keywordLower = rule.keyword.toLowerCase();
+            if (lowerName.includes(keywordLower)) {
+                // 단, 이미 표준명이 적용된 상태(포함)라면 무시 (중복 적용 방지)
+                const stdLower = rule.standardName.toLowerCase();
+                if (lowerName.includes(stdLower)) {
+                    continue; // 이미 기상 4종이 포함되어 있다면 건너뜀
+                }
+                return rule.standardName; // 일치하는 규칙 발견 시 첫 번째 매칭 표준명 리턴
+            }
+        }
+        return rawName;
+    };
+
     // ─── 비고 자동 추천: 기존 거래내역에서 동일/유사 품목 매칭 ───
     const findMatchingRemarks = (inputName) => {
         if (!inputName || inputName.trim().length < 2) return null;
@@ -177,10 +205,24 @@ document.addEventListener('DOMContentLoaded', () => {
         priceInput.addEventListener('input', calculateRowTotal);
         totalInput.addEventListener('input', calculateRowPrice);
 
-        // ─── 품목명 blur 시 비고 자동 추천 ───
+        // ─── 품목명 blur 시: 사전 변환 후 비고 추천 ───
         if (nameInput) {
             nameInput.addEventListener('blur', () => {
-                const val = nameInput.value.trim();
+                let val = nameInput.value.trim();
+                
+                // 1. 자동 변환 사전 매칭
+                if (val.length > 0) {
+                    const aliased = applyItemAlias(val);
+                    if (aliased !== val) {
+                        nameInput.value = aliased;
+                        val = aliased;
+                        // 변환 안내 시각 효과
+                        nameInput.style.backgroundColor = 'rgba(63, 190, 232, 0.1)';
+                        setTimeout(() => nameInput.style.backgroundColor = '', 1000);
+                    }
+                }
+                
+                // 2. 비고 자동 추천 (기존 로직)
                 if (val.length >= 2) {
                     const match = findMatchingRemarks(val);
                     if (match) {
@@ -344,15 +386,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 const totalInput = lastRow.querySelector('.item-total');
                 const remarksInput = lastRow.querySelector('.item-remarks');
 
-                if (nameInput) nameInput.value = item.name;
+                if (nameInput) {
+                    const finalName = applyItemAlias(item.name || '');
+                    nameInput.value = finalName;
+                    if (finalName !== item.name) {
+                        nameInput.style.backgroundColor = 'rgba(63, 190, 232, 0.1)';
+                    }
+                }
                 if (qtyInput) qtyInput.value = item.qty || '';
                 if (priceInput) priceInput.value = item.price || '';
                 if (totalInput) totalInput.value = item.total || '';
                 if (remarksInput) remarksInput.value = item.remarks || '';
 
                 // 비고 자동 추천도 실행
-                if (item.name) {
-                    const match = findMatchingRemarks(item.name);
+                if (nameInput && nameInput.value) {
+                    const match = findMatchingRemarks(nameInput.value);
                     if (match) showRemarksSuggestion(lastRow, match);
                 }
             });
@@ -1225,7 +1273,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 const totalInput = lastRow.querySelector('.item-total');
                 const remarksInput = lastRow.querySelector('.item-remarks');
 
-                if (nameInput) nameInput.value = item.name || '';
+                if (nameInput) {
+                    const finalName = applyItemAlias(item.name || '');
+                    nameInput.value = finalName;
+                    if (finalName !== (item.name || '')) {
+                        nameInput.style.backgroundColor = 'rgba(63, 190, 232, 0.1)';
+                    }
+                }
+                
                 if (qtyInput) qtyInput.value = item.qty || '';
                 if (priceInput) priceInput.value = item.price || '';
                 if (totalInput) totalInput.value = item.total || (item.qty && item.price ? item.qty * item.price : '');
@@ -1248,8 +1303,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 // ─── AI 파싱 후 비고 자동 추천 (옵션 B: 배너만 표시) ───
-                if (item.name) {
-                    const match = findMatchingRemarks(item.name);
+                if (nameInput && nameInput.value) {
+                    const match = findMatchingRemarks(nameInput.value);
                     if (match) {
                         showRemarksSuggestion(lastRow, match);
                     }
@@ -1357,19 +1412,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
             unifyItemList.appendChild(row);
         });
+        });
     };
 
-    // 모달 열기
+    // ─── 기존 수동 통일(탭 1) 기능 유지 ───
     if (unifyItemsBtn) {
         unifyItemsBtn.addEventListener('click', () => {
             unifyModal.style.display = 'flex';
             unifySearchInput.value = '';
             unifyTargetName.value = '';
             renderUnifyList();
+            
+            // 모달 열 때 기본으로 첫 번째 탭 활성화
+            if (tabBtns[0]) tabBtns[0].click();
         });
     }
 
-    // 모달 닫기
     if (closeUnifyModalBtn) {
         closeUnifyModalBtn.addEventListener('click', () => {
             unifyModal.style.display = 'none';
@@ -1381,14 +1439,12 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // 검색 필터
     if (unifySearchInput) {
         unifySearchInput.addEventListener('input', (e) => {
             renderUnifyList(e.target.value);
         });
     }
 
-    // 일괄 변환 실행
     if (applyUnifyBtn) {
         applyUnifyBtn.addEventListener('click', () => {
             const targetName = unifyTargetName.value.trim();
@@ -1405,7 +1461,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const selectedNames = Array.from(checkedBoxes).map(cb => cb.dataset.name);
 
-            // 이미 같은 이름만 선택한 경우
             if (selectedNames.length === 1 && selectedNames[0] === targetName) {
                 alert('선택한 품목과 통일할 이름이 동일합니다.');
                 return;
@@ -1414,10 +1469,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const confirmMsg = `다음 ${selectedNames.length}개 품목명을 "${targetName}"(으)로 통일합니다.\n\n${selectedNames.map(n => `• ${n}`).join('\n')}\n\n진행하시겠습니까?`;
             if (!confirm(confirmMsg)) return;
 
-            // 백업 저장
             localStorage.setItem('inventoryData_backup', JSON.stringify(transactions));
 
-            // 일괄 변환
             let changeCount = 0;
             transactions.forEach(t => {
                 if (t.name && selectedNames.includes(t.name.trim())) {
@@ -1430,10 +1483,259 @@ document.addEventListener('DOMContentLoaded', () => {
             renderTable();
 
             alert(`✅ 완료! ${changeCount}건의 거래 내역이 "${targetName}"(으)로 통일되었습니다.`);
-
-            // 리스트 새로고침
+            
             unifyTargetName.value = '';
             renderUnifyList(unifySearchInput.value);
+        });
+    }
+
+    // ─── 탭 전환 로직 ───
+    const tabBtns = document.querySelectorAll('.tab-btn');
+    const tabContents = document.querySelectorAll('.tab-content');
+
+    tabBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            tabBtns.forEach(b => {
+                b.classList.remove('active');
+                b.style.borderBottomColor = 'transparent';
+                b.style.color = '#8b949e';
+            });
+            tabContents.forEach(c => c.style.display = 'none');
+
+            btn.classList.add('active');
+            btn.style.borderBottomColor = '#f0b429';
+            btn.style.color = '#f0b429';
+
+            const targetId = btn.dataset.tab;
+            document.getElementById(targetId).style.display = 'flex';
+            
+            if (targetId === 'tab-alias') {
+                renderAliasRules();
+            }
+        });
+    });
+
+    // ─── 자동 변환 사전(Alias) 관리 및 검수 미리보기 로직 ───
+    const aliasRuleList = document.getElementById('aliasRuleList');
+    const addAliasRuleBtn = document.getElementById('addAliasRuleBtn');
+    const aliasKeywordInput = document.getElementById('aliasKeyword');
+    const aliasStandardInput = document.getElementById('aliasStandard');
+    
+    const aliasPreviewTable = document.getElementById('aliasPreviewTable');
+    const aliasPreviewBody = document.getElementById('aliasPreviewBody');
+    const previewEmptyState = document.getElementById('previewEmptyState');
+    const previewAliasChangesBtn = document.getElementById('previewAliasChangesBtn');
+    const applyPreviewActionDiv = document.getElementById('applyPreviewActionDiv');
+    const applyPreviewChangesBtn = document.getElementById('applyPreviewChangesBtn');
+    const selectAllPreview = document.getElementById('selectAllPreview');
+    const previewSelectedCount = document.getElementById('previewSelectedCount');
+
+    let currentPreviewItems = [];
+
+    // 규칙 목록 렌더링
+    const renderAliasRules = () => {
+        aliasRuleList.innerHTML = '';
+        if (itemAliasRules.length === 0) {
+            aliasRuleList.innerHTML = '<div style="color: #6b7280; text-align: center; font-size: 12px; margin-top: 20px;">등록된 규칙이 없습니다.</div>';
+            return;
+        }
+
+        itemAliasRules.forEach((rule, index) => {
+            const div = document.createElement('div');
+            div.className = 'alias-rule-item';
+            div.innerHTML = `
+                <span class="keyword">${rule.keyword}</span>
+                <span class="arrow">➔</span>
+                <span class="standard">${rule.standardName}</span>
+                <button type="button" class="delete-btn" data-idx="${index}">삭제</button>
+            `;
+            div.querySelector('.delete-btn').addEventListener('click', () => {
+                if (confirm(`'${rule.keyword}' 규칙을 삭제하시겠습니까?`)) {
+                    itemAliasRules.splice(index, 1);
+                    saveAliasRules();
+                    renderAliasRules();
+                }
+            });
+            aliasRuleList.appendChild(div);
+        });
+    };
+
+    // 규칙 추가
+    if (addAliasRuleBtn) {
+        addAliasRuleBtn.addEventListener('click', () => {
+            const keyword = aliasKeywordInput.value.trim();
+            const standardName = aliasStandardInput.value.trim();
+
+            if (!keyword || !standardName) {
+                alert('원래 입력명과 표준 품목명을 모두 입력해주세요.');
+                return;
+            }
+
+            // 중복 검사
+            const exists = itemAliasRules.some(r => r.keyword.toLowerCase() === keyword.toLowerCase());
+            if (exists) {
+                alert('이미 등록된 키워드입니다.');
+                return;
+            }
+
+            itemAliasRules.push({ keyword, standardName });
+            saveAliasRules();
+            
+            aliasKeywordInput.value = '';
+            aliasStandardInput.value = '';
+            renderAliasRules();
+            
+            // 추가 완료 시 미리보기 새로고침 제안
+            if (aliasPreviewTable.style.display === 'table') {
+                previewAliasChangesBtn.click();
+            }
+        });
+    }
+
+    // 미리보기(검수) 렌더링
+    if (previewAliasChangesBtn) {
+        previewAliasChangesBtn.addEventListener('click', () => {
+            if (itemAliasRules.length === 0) {
+                alert('등록된 규칙이 없습니다. 먼저 규칙을 추가해주세요.');
+                return;
+            }
+
+            currentPreviewItems = [];
+            // 거래내역을 역순으로 확인 (최신순)
+            const reversedTransactions = [...transactions].reverse();
+            
+            reversedTransactions.forEach((t, reversedIndex) => {
+                if (!t.name) return;
+                
+                // applyItemAlias 코어 로직과 동일하게 시뮬레이션
+                const trimName = t.name.trim();
+                const lowerName = trimName.toLowerCase();
+                let matchedStandard = null;
+
+                for (const rule of itemAliasRules) {
+                    const keywordLower = rule.keyword.toLowerCase();
+                    if (lowerName.includes(keywordLower)) {
+                        const stdLower = rule.standardName.toLowerCase();
+                        if (!lowerName.includes(stdLower)) {
+                            matchedStandard = rule.standardName;
+                            break;
+                        }
+                    }
+                }
+
+                if (matchedStandard && matchedStandard !== t.name) {
+                    // 원본 transactions 배열에서의 인덱스 기록 (업데이트를 위함)
+                    const originalIndex = transactions.length - 1 - reversedIndex;
+                    currentPreviewItems.push({
+                        originalIndex,
+                        date: t.date,
+                        oldName: t.name,
+                        newName: matchedStandard
+                    });
+                }
+            });
+
+            if (currentPreviewItems.length === 0) {
+                previewEmptyState.style.display = 'block';
+                previewEmptyState.innerHTML = '규칙에 해당하는 변환 대상 품목이 없습니다.<br>모두 최신 상태입니다.';
+                aliasPreviewTable.style.display = 'none';
+                applyPreviewActionDiv.style.display = 'none';
+                return;
+            }
+
+            // 테이블 렌더링
+            previewEmptyState.style.display = 'none';
+            aliasPreviewTable.style.display = 'table';
+            applyPreviewActionDiv.style.display = 'flex';
+            aliasPreviewBody.innerHTML = '';
+            
+            currentPreviewItems.forEach((item, idx) => {
+                const tr = document.createElement('tr');
+                tr.className = 'preview-row selected';
+                tr.innerHTML = `
+                    <td style="text-align: center;"><input type="checkbox" class="preview-checkbox" data-idx="${idx}" checked style="accent-color: #3fbee8; cursor: pointer;"></td>
+                    <td>${item.date}</td>
+                    <td class="preview-old-name">${item.oldName}</td>
+                    <td style="color: #6b7280; text-align: center;">➔</td>
+                    <td class="preview-new-name">${item.newName}</td>
+                `;
+                
+                const cb = tr.querySelector('input');
+                cb.addEventListener('change', () => {
+                    tr.classList.toggle('selected', cb.checked);
+                    updatePreviewSelectedCount();
+                    
+                    // 전체 선택 체크박스 상태 동기화
+                    const allCbs = document.querySelectorAll('.preview-checkbox');
+                    const checkedCbs = document.querySelectorAll('.preview-checkbox:checked');
+                    selectAllPreview.checked = (allCbs.length === checkedCbs.length);
+                });
+                
+                // 행 클릭 시 체크박스 토글 (체크박스 자체 클릭 제외)
+                tr.addEventListener('click', (e) => {
+                    if (e.target.tagName !== 'INPUT') {
+                        cb.checked = !cb.checked;
+                        cb.dispatchEvent(new Event('change'));
+                    }
+                });
+
+                aliasPreviewBody.appendChild(tr);
+            });
+            
+            selectAllPreview.checked = true;
+            updatePreviewSelectedCount();
+        });
+    }
+
+    const updatePreviewSelectedCount = () => {
+        const count = document.querySelectorAll('.preview-checkbox:checked').length;
+        previewSelectedCount.textContent = `${count}건 선택됨`;
+    };
+
+    if (selectAllPreview) {
+        selectAllPreview.addEventListener('change', (e) => {
+            const isChecked = e.target.checked;
+            document.querySelectorAll('.preview-checkbox').forEach(cb => {
+                cb.checked = isChecked;
+                const tr = cb.closest('tr');
+                if (isChecked) tr.classList.add('selected');
+                else tr.classList.remove('selected');
+            });
+            updatePreviewSelectedCount();
+        });
+    }
+
+    // 검수 완료 후 선택된 항목만 안전 변환
+    if (applyPreviewChangesBtn) {
+        applyPreviewChangesBtn.addEventListener('click', () => {
+            const checkedBoxes = document.querySelectorAll('.preview-checkbox:checked');
+            if (checkedBoxes.length === 0) {
+                alert('변환할 항목을 1개 이상 선택해주세요.');
+                return;
+            }
+
+            if (!confirm(`선택한 ${checkedBoxes.length}건의 품목명을 안전하게 변환하시겠습니까?`)) return;
+
+            // 백업 생성
+            localStorage.setItem('inventoryData_backup', JSON.stringify(transactions));
+
+            // 인덱스를 기반으로 선택된 항목 변환
+            checkedBoxes.forEach(cb => {
+                const itemIdx = parseInt(cb.dataset.idx, 10);
+                const previewItem = currentPreviewItems[itemIdx];
+                // 원본 트랜잭션 업데이트
+                if (previewItem && transactions[previewItem.originalIndex]) {
+                    transactions[previewItem.originalIndex].name = previewItem.newName;
+                }
+            });
+
+            saveToLocalStorage();
+            renderTable();
+
+            alert(`✅ ${checkedBoxes.length}건의 품목명이 안전하게 변환되었습니다.`);
+            
+            // 미리보기 리스트 갱신
+            previewAliasChangesBtn.click();
         });
     }
 

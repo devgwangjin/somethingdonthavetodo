@@ -186,26 +186,99 @@
         </div>
     </div>
 
-    <!-- 품목 통일 관리 모달 -->
+    <!-- 품목 관리 종합 모달 (통일 및 사전) -->
     <div id="unifyModal" class="modal-backdrop" style="display: none;">
-        <div class="modal-content" style="max-width: 700px; max-height: 85vh; display: flex; flex-direction: column;">
-            <div class="modal-header">
-                <h3>🔀 품목명 통일 관리</h3>
-                <button type="button" id="closeUnifyModalBtn" class="modal-close-btn">&times;</button>
-            </div>
-            <div style="padding: 12px 20px 8px 20px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                <input type="text" id="unifySearchInput" class="search-input" placeholder="🔍 품목명 검색..." style="flex: 1; min-width: 180px; height: 36px; font-size: 13px;">
-                <span id="unifyStats" style="font-size: 12px; color: #8b949e; white-space: nowrap;"></span>
-            </div>
-            <div class="modal-body" style="flex: 1; overflow-y: auto; padding: 8px 20px;">
-                <div id="unifyItemList" style="display: flex; flex-direction: column; gap: 4px;">
-                    <!-- 동적 품목 목록 -->
+        <div class="modal-content" style="max-width: 750px; max-height: 85vh; display: flex; flex-direction: column;">
+            <div class="modal-header" style="padding-bottom: 0;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; width: 100%;">
+                    <h3>🔀 품목명 통일 및 사전 관리</h3>
+                    <button type="button" id="closeUnifyModalBtn" class="modal-close-btn">&times;</button>
+                </div>
+                <!-- 탭 네비게이션 -->
+                <div class="modal-tabs" style="display: flex; gap: 20px; margin-top: 15px; border-bottom: 1px solid var(--border-color);">
+                    <button type="button" class="tab-btn active" data-tab="tab-unify" style="padding: 10px 5px; background: none; border: none; border-bottom: 2px solid #f0b429; color: #f0b429; font-weight: 600; cursor: pointer; font-size: 14px;">1. 수동 일괄 통일</button>
+                    <button type="button" class="tab-btn" data-tab="tab-alias" style="padding: 10px 5px; background: none; border: none; border-bottom: 2px solid transparent; color: #8b949e; cursor: pointer; font-size: 14px;">2. 🏷️ 자동 변환 사전 & 미리보기</button>
                 </div>
             </div>
-            <div style="padding: 12px 20px; border-top: 1px solid var(--border-color); display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-                <label style="font-size: 13px; color: #a8d8ff; white-space: nowrap;">통일할 품목명:</label>
-                <input type="text" id="unifyTargetName" class="search-input" placeholder="변경할 표준 품목명 입력..." style="flex: 1; min-width: 200px; height: 36px; font-size: 13px;">
-                <button type="button" id="applyUnifyBtn" class="btn-primary" style="background: linear-gradient(135deg, #f0b429 0%, #e6930a 100%); color: #1a1a2e; font-weight: 700; font-size: 13px; height: 36px; padding: 0 18px; white-space: nowrap;">✅ 선택 항목 일괄 변환</button>
+
+            <!-- 탭 1: 기존 수동 일괄 통일 -->
+            <div id="tab-unify" class="tab-content" style="display: flex; flex-direction: column; flex: 1; min-height: 0;">
+                <div style="padding: 12px 20px 8px 20px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                    <input type="text" id="unifySearchInput" class="search-input" placeholder="🔍 품목명 검색..." style="flex: 1; min-width: 180px; height: 36px; font-size: 13px;">
+                    <span id="unifyStats" style="font-size: 12px; color: #8b949e; white-space: nowrap;"></span>
+                </div>
+                <div class="modal-body" style="flex: 1; overflow-y: auto; padding: 8px 20px;">
+                    <div id="unifyItemList" style="display: flex; flex-direction: column; gap: 4px;">
+                        <!-- 동적 품목 목록 -->
+                    </div>
+                </div>
+                <div style="padding: 12px 20px; border-top: 1px solid var(--border-color); display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                    <label style="font-size: 13px; color: #a8d8ff; white-space: nowrap;">통일할 품목명:</label>
+                    <input type="text" id="unifyTargetName" class="search-input" placeholder="변경할 표준 품목명 입력..." style="flex: 1; min-width: 200px; height: 36px; font-size: 13px;">
+                    <button type="button" id="applyUnifyBtn" class="btn-primary" style="background: linear-gradient(135deg, #f0b429 0%, #e6930a 100%); color: #1a1a2e; font-weight: 700; font-size: 13px; height: 36px; padding: 0 18px; white-space: nowrap;">✅ 선택 항목 일괄 변환</button>
+                </div>
+            </div>
+
+            <!-- 탭 2: 자동 변환 사전 (Alias) 및 미리보기 검수 -->
+            <div id="tab-alias" class="tab-content" style="display: none; flex-direction: column; flex: 1; min-height: 0;">
+                
+                <!-- 상단: 규칙 추가 폼 -->
+                <div style="padding: 16px 20px; border-bottom: 1px solid var(--border-color); background: rgba(0,0,0,0.2);">
+                    <div style="font-size: 13px; color: #a0a0b0; margin-bottom: 10px;">
+                        새로운 입력(AI스캔, 엑셀 붙여넣기, 수동 입력) 시 자동으로 표준명으로 변경해주는 규칙입니다.
+                    </div>
+                    <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                        <input type="text" id="aliasKeyword" class="search-input" placeholder="원래 입력명 (예: E-SEN)" style="flex: 1; min-width: 150px; height: 36px; font-size: 13px;">
+                        <span style="color: #a8d8ff; font-weight: bold;">➔</span>
+                        <input type="text" id="aliasStandard" class="search-input" placeholder="표준 품목명 (예: E-SEN (기상 4종))" style="flex: 1.5; min-width: 200px; height: 36px; font-size: 13px;">
+                        <button type="button" id="addAliasRuleBtn" class="btn-secondary" style="height: 36px; padding: 0 16px; font-size: 13px;">규칙 추가</button>
+                    </div>
+                </div>
+
+                <!-- 하단 영역 분할 (좌측: 등록된 규칙 목록, 우측: 검수/미리보기 영역) -->
+                <div style="display: flex; flex: 1; min-height: 0; overflow: hidden;">
+                    
+                    <!-- 좌측: 규칙 목록 -->
+                    <div style="width: 35%; border-right: 1px solid var(--border-color); display: flex; flex-direction: column;">
+                        <div style="padding: 10px 15px; font-size: 13px; font-weight: 600; border-bottom: 1px solid var(--border-color); background: rgba(255,255,255,0.02);">등록된 규칙 모음</div>
+                        <div id="aliasRuleList" style="flex: 1; overflow-y: auto; padding: 10px 15px; display: flex; flex-direction: column; gap: 8px;">
+                            <!-- 등록된 규칙 렌더링 -->
+                        </div>
+                    </div>
+                    
+                    <!-- 우측: 미리보기 및 검수 테이블 -->
+                    <div style="width: 65%; display: flex; flex-direction: column; background: rgba(255,255,255,0.01);">
+                        <div style="padding: 10px 15px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); background: rgba(255,255,255,0.02);">
+                            <span style="font-size: 13px; font-weight: 600;">🔍 변경 대상 미리보기 (검수)</span>
+                            <button type="button" id="previewAliasChangesBtn" class="btn-outline" style="height: 28px; padding: 0 12px; font-size: 12px; border-color: #3fbee8; color: #3fbee8;">모든 규칙 대상 검색</button>
+                        </div>
+                        <div style="flex: 1; overflow-y: auto; padding: 10px;">
+                            <div id="previewEmptyState" style="text-align: center; color: #6b7280; font-size: 13px; padding-top: 40px;">
+                                "모든 규칙 대상 검색"을 누르면<br>기존 거래내역 중 변환 대상이 표시됩니다.
+                            </div>
+                            <table id="aliasPreviewTable" style="display: none; font-size: 12px; margin: 0; min-width: 100%;">
+                                <thead>
+                                    <tr>
+                                        <th style="padding: 6px; width: 30px; text-align: center;">
+                                            <input type="checkbox" id="selectAllPreview" checked style="accent-color: #3fbee8; cursor: pointer;">
+                                        </th>
+                                        <th style="padding: 6px; width: 80px;">거래일자</th>
+                                        <th style="padding: 6px;">현재 품목명</th>
+                                        <th style="padding: 6px; width: 20px;"></th>
+                                        <th style="padding: 6px;">변경될 이름</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="aliasPreviewBody">
+                                    <!-- 미리보기 항목 렌더링 -->
+                                </tbody>
+                            </table>
+                        </div>
+                        <div id="applyPreviewActionDiv" style="display: none; padding: 12px 15px; border-top: 1px solid var(--border-color); justify-content: space-between; align-items: center;">
+                            <span id="previewSelectedCount" style="font-size: 13px; color: #a8d8ff;">0건 선택됨</span>
+                            <button type="button" id="applyPreviewChangesBtn" class="btn-primary" style="background: linear-gradient(135deg, #3fbee8 0%, #112d4e 100%); color: #fff; font-weight: 700; font-size: 13px; height: 34px; padding: 0 16px;">✅ 선택 항목 안전 변환</button>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>

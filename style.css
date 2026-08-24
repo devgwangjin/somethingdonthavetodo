@@ -821,3 +821,79 @@ tr.receipt-divider td {
 .unify-item .use-as-standard-btn:hover {
     background: rgba(240, 180, 41, 0.15);
 }
+
+/* ── 탭 네비게이션 및 콘텐츠 ── */
+.tab-content {
+    animation: fadeIn 0.2s ease-in-out;
+}
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+.tab-btn:hover {
+    color: var(--text-main) !important;
+}
+
+/* ── 자동 변환 규칙(Alias) 목록 스타일 ── */
+.alias-rule-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 10px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    gap: 8px;
+    font-size: 12px;
+}
+.alias-rule-item .keyword {
+    color: #a8d8ff;
+    font-weight: 600;
+}
+.alias-rule-item .arrow {
+    color: #6b7280;
+}
+.alias-rule-item .standard {
+    color: var(--text-main);
+    flex: 1;
+    word-break: break-all;
+}
+.alias-rule-item .delete-btn {
+    background: none;
+    border: none;
+    color: #ff4d4f;
+    cursor: pointer;
+    opacity: 0.6;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+.alias-rule-item .delete-btn:hover {
+    opacity: 1;
+    background: rgba(255, 77, 79, 0.1);
+}
+
+/* ── 검수 미리보기 테이블 스타일 ── */
+#aliasPreviewTable th {
+    background-color: rgba(255, 255, 255, 0.05);
+    border-bottom: 1px solid var(--border-color);
+    position: sticky;
+    top: 0;
+}
+#aliasPreviewTable td {
+    padding: 6px;
+    border-bottom: 1px solid var(--border-color);
+}
+.preview-row:hover {
+    background-color: rgba(255, 255, 255, 0.03);
+}
+.preview-row.selected {
+    background-color: rgba(63, 190, 232, 0.08);
+}
+.preview-old-name {
+    color: #a0a0b0;
+    text-decoration: line-through;
+}
+.preview-new-name {
+    color: #38ef7d;
+    font-weight: 600;
+}
