@@ -222,18 +222,18 @@
             <!-- 탭 2: 자동 변환 사전 (Alias) 및 미리보기 검수 -->
             <div id="tab-alias" class="tab-content" style="display: none; flex-direction: column; flex: 1; min-height: 0;">
                 
-                <!-- 상단: 규칙 추가 폼 -->
-                <div style="padding: 16px 20px; border-bottom: 1px solid var(--border-color); background: rgba(0,0,0,0.2);">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 15px;">
-                        <div style="font-size: 13px; color: #a0a0b0; line-height: 1.4;">
-                            새로운 입력(AI스캔, 엑셀 붙여넣기, 수동 입력) 시 자동으로 표준명으로 변경해주는 규칙입니다.
-                        </div>
-                        <button type="button" id="aiRecommendBtn" class="btn-primary" style="height: 32px; padding: 0 14px; font-size: 12px; white-space: nowrap; flex-shrink: 0; background: linear-gradient(135deg, #a855f7 0%, #7c3aed 100%);">✨ AI 규칙 자동 제안</button>
+                <!-- 상단: 규칙 추가 폼 & AI 추천 -->
+                <div style="padding: 14px 20px; border-bottom: 1px solid var(--border-color); background: rgba(0,0,0,0.2);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <span style="font-size: 13px; color: #a0a0b0;">
+                            💡 신규 입력(AI스캔, 엑셀, 수동) 시 표준명으로 자동 치환되는 규칙입니다.
+                        </span>
+                        <button type="button" id="aiRecommendBtn">✨ AI 자동 규칙 제안</button>
                     </div>
-                    <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-                        <input type="text" id="aliasKeyword" class="search-input" placeholder="원래 입력명 (예: E-SEN)" style="flex: 1; min-width: 150px; height: 36px; font-size: 13px;">
-                        <span style="color: #a8d8ff; font-weight: bold;">➔</span>
-                        <input type="text" id="aliasStandard" class="search-input" placeholder="표준 품목명 (예: E-SEN (기상 4종))" style="flex: 1.5; min-width: 200px; height: 36px; font-size: 13px;">
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <input type="text" id="aliasKeyword" class="search-input" placeholder="원래 입력명 (예: E-SEN)" style="flex: 1; height: 36px; font-size: 13px;">
+                        <span style="color: #a8d8ff; font-weight: bold; padding: 0 4px;">➔</span>
+                        <input type="text" id="aliasStandard" class="search-input" placeholder="표준 품목명 (예: E-SEN (기상 4종))" style="flex: 1.4; height: 36px; font-size: 13px;">
                         <button type="button" id="addAliasRuleBtn" class="btn-secondary" style="height: 36px; padding: 0 16px; font-size: 13px;">규칙 추가</button>
                     </div>
                 </div>
